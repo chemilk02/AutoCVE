@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}API 키 · AutoCVE{% endblock %}
+
+{% macro credential_status(cred) %}
+  {% if cred %}
+    <dl class="status">
+      <dt>상태</dt>
+      <dd><span class="badge badge-{{ cred.status }}">{{ {"valid": "검증됨", "unverified": "검증 못 함", "invalid": "거부됨"}[cred.status] }}</span>
+        {% if cred.status_message %}<span class="muted">{{ cred.status_message }}</span>{% endif %}</dd>
+      <dt>키</dt>
+      <dd><code>••••{{ cred.last4 }}</code></dd>
+      <dt>마지막 검증</dt>
+      <dd>{{ cred.validated_at.strftime("%Y-%m-%d %H:%M UTC") if cred.validated_at else "-" }}</dd>
+    </dl>
+  {% else %}
+    <p class="muted">저장된 키가 없습니다.</p>
+  {% endif %}
+{% endmacro %}
+
+{% macro key_form(provider, placeholder) %}
+  <form method="post" action="/settings/keys/{{ provider }}" class="key-form">
+    <label for="key-{{ provider }}">{{ "새 키로 교체" if credentials[provider] else "키 입력" }}</label>
+    <div class="row">
+      <input id="key-{{ provider }}" name="api_key" type="password" autocomplete="off"
+             spellcheck="false" placeholder="{{ placeholder }}" required>
+      <button type="submit">검증 후 저장</button>
+    </div>
+  </form>
+  {% if credentials[provider] %}
+    <div class="row actions">
+      <form method="post" action="/settings/keys/{{ provider }}/revalidate">
+        <button type="submit" class="secondary">재검증</button>
+      </form>
+      <form method="post" action="/settings/keys/{{ provider }}/delete"
+            onsubmit="return confirm('{{ labels[provider] }} 키를 삭제할까요?')">
+        <button type="submit" class="danger">삭제</button>
+      </form>
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% block content %}
+<h1>API 키</h1>
+<p class="muted">키는 암호화해서 저장하며, 저장 후에는 끝 4자리만 표시합니다.</p>
+
+<section class="card">
+  <h2>Anthropic <span class="tag">필수</span></h2>
+  <p class="muted">취약점 프로파일 추출과 Haiku/Sonnet/Opus 분석에 사용합니다.</p>
+  {{ credential_status(credentials["anthropic"]) }}
+  {{ key_form("anthropic", "sk-ant-...") }}
+</section>
+
+<section class="card">
+  <h2>JEV 판별 모델 <span class="tag">선택</span></h2>
+  <p class="muted">위험 여부 판별과 분석 모델 선택에 사용합니다. 키가 없으면 규칙 기반 판별로 동작합니다.</p>
+
+  <form method="post" action="/settings/jev-provider" class="row provider-select">
+    <label for="jev-provider">사용할 제공자</label>
+    <select id="jev-provider" name="provider">
+      <option value="none" {{ "selected" if workspace.jev_provider == "none" }}>사용 안 함 (규칙 기반)</option>
+      {% for p in jev_providers %}
+        <option value="{{ p }}" {{ "selected" if workspace.jev_provider == p }}
+                {{ "disabled" if not credentials[p] }}>{{ labels[p] }}{{ "" if credentials[p] else " - 키 없음" }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="secondary">변경</button>
+  </form>
+
+  {% for p in jev_providers %}
+    <div class="subcard {{ 'active' if workspace.jev_provider == p }}">
+      <h3>{{ labels[p] }}{% if workspace.jev_provider == p %} <span class="tag">사용 중</span>{% endif %}</h3>
+      {{ credential_status(credentials[p]) }}
+      {{ key_form(p, "sk-or-..." if p == "openrouter" else "TypeSafe API 키") }}
+    </div>
+  {% endfor %}
+</section>
+{% endblock %}

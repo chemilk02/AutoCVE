@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: autocve
+      POSTGRES_PASSWORD: autocve
+      POSTGRES_DB: autocve
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autocve"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    image: autocve:local
+    env_file: .env
+    environment: &app-env
+      AUTOCVE_MASTER_KEY: ${AUTOCVE_MASTER_KEY:?.env에 AUTOCVE_MASTER_KEY를 설정하세요}
+      AUTOCVE_DATABASE_URL: postgresql+psycopg://autocve:autocve@db:5432/autocve
+      AUTOCVE_REDIS_URL: redis://redis:6379/0
+    ports:
+      # 같은 PC에서만 접속하도록 localhost에만 연다.
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: autocve:local
+    env_file: .env
+    environment: *app-env
+    command: ["arq", "autocve.worker.WorkerSettings"]
+    depends_on:
+      app:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+volumes:
+  db-data:

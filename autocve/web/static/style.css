@@ -1,0 +1,130 @@
+:root {
+  --bg: #f7f7f8;
+  --fg: #1c1c1f;
+  --muted: #6b6b73;
+  --card: #ffffff;
+  --border: #e2e2e6;
+  --accent: #2f5bd3;
+  --on-accent: #ffffff;
+  --success: #1f7a4d;
+  --warning: #9a6200;
+  --error: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141416;
+    --fg: #ececef;
+    --muted: #9d9da6;
+    --card: #1d1d21;
+    --border: #2e2e34;
+    --accent: #7c9cff;
+    --on-accent: #0d1430;
+    --success: #5fcf95;
+    --warning: #f0b450;
+    --error: #ff8a80;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+
+.topbar {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+.topbar a { color: var(--fg); text-decoration: none; }
+.brand { font-weight: 700; }
+
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+
+h1 { margin: 0 0 4px; font-size: 24px; }
+h2 { margin: 0 0 4px; font-size: 18px; }
+h3 { margin: 0 0 8px; font-size: 15px; }
+
+.muted { color: var(--muted); }
+
+.card, .subcard {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.subcard.active { border-color: var(--accent); }
+
+.tag {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  vertical-align: middle;
+}
+
+.status {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 12px 0;
+}
+
+.status dt { color: var(--muted); }
+.status dd { margin: 0; }
+
+.badge { font-weight: 600; margin-right: 8px; }
+.badge-valid { color: var(--success); }
+.badge-unverified { color: var(--warning); }
+.badge-invalid { color: var(--error); }
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.actions { margin-top: 8px; }
+.key-form label, .provider-select label { display: block; width: 100%; margin: 8px 0 4px; }
+
+input, select, button { font: inherit; }
+
+input, select {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+button {
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+
+button.secondary { background: transparent; color: var(--accent); }
+button.danger { background: transparent; color: var(--error); border-color: var(--error); }
+
+.notice {
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  margin-bottom: 16px;
+}
+
+.notice-success { color: var(--success); }
+.notice-warning { color: var(--warning); }
+.notice-error { color: var(--error); }

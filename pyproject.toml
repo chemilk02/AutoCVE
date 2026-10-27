@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autocve"
+version = "0.1.0"
+description = "CVE 피드를 감시하고 연결된 저장소의 실제 영향과 위험도를 판별하는 서비스"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.13",
+    "anthropic>=2.3,<3",
+    "arq>=0.26",
+    "cryptography>=43",
+    "fastapi>=0.115",
+    "httpx>=0.27",
+    "jinja2>=3.1",
+    "psycopg[binary]>=3.2",
+    "pydantic-settings>=2.4",
+    "python-multipart>=0.0.9",
+    "sqlalchemy>=2.0.30",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+include = ["autocve*"]
+
+[tool.setuptools.package-data]
+autocve = ["web/templates/*.html", "web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Alembic이 생성한 마이그레이션과 문서 속 예시 코드는 손대지 않는다.
+extend-exclude = ["migrations/versions", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
