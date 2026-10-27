@@ -8,7 +8,7 @@ MVP 범위는 [01-mvp-scope.md](01-mvp-scope.md)를 참고한다.
 2. **판별과 설명을 분리한다.** "영향이 있는가", "어느 모델이 필요한가"는 JEV가 확률로 답한다. 사람이 읽을 근거 문장은 Claude가 쓴다.
 3. **위험한 쪽으로 틀린다.** 자동 종결은 확률이 높고 심각도가 낮을 때만 한다. KEV 등재나 Critical 후보는 반드시 Claude 확인을 거친다.
 4. **같은 질문은 두 번 묻지 않는다.** 판정은 `(취약점, 패키지@버전, 관련 코드 지문, 프롬프트 버전, 모델)` 단위로 캐싱한다.
-5. **키는 사용자 것이다.** Anthropic/TypeSafe 키는 암호화해서 저장하고, 로그·에러·트레이스에 절대 남기지 않는다. 예산 상한을 넘으면 호출을 멈춘다.
+5. **키는 사용자 것이다.** Anthropic 키와 JEV 키(TypeSafe 또는 OpenRouter)는 암호화해서 저장하고, 로그·에러·트레이스에 절대 남기지 않는다. 예산 상한을 넘으면 호출을 멈춘다.
 
 ## 2. 전체 구성
 
@@ -29,7 +29,7 @@ flowchart LR
   INV --> DB
   DB --> MAT[Matcher]
   MAT -->|후보 Finding| GATE[판별 게이트<br/>G0 결정적 필터]
-  GATE -->|G1 판별·라우팅| JEV[[TypeSafe JEV]]
+  GATE -->|G1 판별·라우팅| JEV[[JEV<br/>TypeSafe 또는 OpenRouter]]
   GATE -->|G2 분석| LLM[LLM Gateway]
   LLM --> ANT[[Anthropic API<br/>Haiku / Sonnet / Opus]]
   GATE --> SCORE[Risk Scorer]
@@ -137,7 +137,7 @@ JEV는 텍스트를 생성하지 못하므로, 매칭된 취약점마다 **Haiku
 - `sonnet`: 여러 파일에 걸친 데이터 흐름을 따라가야 함.
 - `opus`: 설정·인증 경로 등 복합 조건이 있고, 심각도가 높아 오판 비용이 큼.
 
-**state(입력)는 짧게 만든다.** JEV 컨텍스트 한도는 약 32K이고 단가는 입력에만 붙는다. 목표는 4K 토큰 이하다.
+**state(입력)는 짧게 만든다.** 단가는 입력에만 붙으므로 목표는 4K 토큰 이하다. 컨텍스트 한도는 자료마다 다르다(서드파티 가이드 32K, OpenRouter 공식 문서 262,144). 구현은 보수적으로 32K를 상한으로 잡는다.
 
 ```
 [취약점] id, 요약 2~3문장, 프로파일(취약 심볼, 트리거 조건)
@@ -177,24 +177,60 @@ JEV 출력을 그대로 따르지 않고, 확률 임계값과 안전 규칙으�
 
 ### 4.6 검증이 필요한 JEV 사항
 
-아래 내용은 서드파티 가이드와 검색 결과로만 확인한 것이다. 구현 전에 공식 문서(docs.typesafe.ai)로 검증한다.
+아래 내용은 서드파티 가이드와 검색 결과로만 확인한 것이다. 구현 전에 공식 문서(docs.typesafe.ai, openrouter.ai/docs)로 검증한다.
 
-- 엔드포인트 `POST https://api.typesafe.ai/v1/systemone`, Bearer 인증
-- 요청 본문: `model`(예: `jev-latest`), `state`, `questions{이름: {type, instructions, options/criteria}}`
+| 항목 | TypeSafe 직접 | OpenRouter 경유 |
+|------|---------------|-----------------|
+| 엔드포인트 | `POST https://api.typesafe.ai/v1/systemone` | `POST https://openrouter.ai/api/v1/systemone` (TypeSafe 호환). 별도로 alpha 단계인 `POST /api/alpha/decisions`도 있음 |
+| 인증 | TypeSafe 키, Bearer | OpenRouter 키, Bearer |
+| 모델 ID | `jev-latest`, 응답에는 `jev-1.13.0` 등으로 표시 | `typesafe/jev-1.14`, `typesafe/jev-1.13`, 별칭 `~typesafe/jev-latest` |
+| 과금 | TypeSafe 계정. 입력 $0.042/MTok, 출력 무과금 | OpenRouter 계정 크레딧 |
+| 모델 조회 | — | 기본 모델 목록에는 없음. `GET /api/v1/models?output_modalities=decisions`로 조회 |
+
+공통 사항은 다음과 같다.
+
+- 요청 본문: `model`, `state`, `questions{이름: {type, instructions, options/criteria}}`
 - 응답: 질문별 `choice`, `confidence`, `probabilities`
-- 컨텍스트 한도 약 32K, 입력 단가 $0.042/MTok, 출력 무과금
-- 운영에서는 `jev-latest` 대신 **버전을 고정**한다 (예: 응답에 표시되는 `jev-1.13.0`). 임계값 보정이 모델 버전에 묶이기 때문이다.
+- `/api/v1/chat/completions`로 보내면 안 된다. JEV는 판별 전용 엔드포인트를 쓴다.
+- 운영에서는 `latest` 별칭 대신 **버전을 고정**한다. 임계값 보정이 모델 버전에 묶이기 때문이다. 두 제공자의 버전 표기가 다르므로 `model_version`은 응답에서 읽어 저장한다.
+- 버전에 따라 지원하는 질문 타입이 다르다 (예: Box 타입은 1.14부터). MVP는 `choice`만 쓰므로 1.13 이상이면 된다.
 
-JEV 호출은 `TriageModel` 인터페이스 뒤에 둔다. API가 바뀌거나 다른 판별 모델로 교체해도 게이트 로직은 그대로 유지된다.
+### 4.7 JEV 제공자 선택
+
+워크스페이스 설정에서 JEV 제공자를 고른다. 판별 로직과 라우팅 정책은 제공자와 무관하게 같다.
+
+| 제공자 | 고를 이유 |
+|--------|-----------|
+| TypeSafe 직접 | 단가가 명확하고, 데이터가 TypeSafe 한 곳으로만 간다 |
+| OpenRouter | 이미 OpenRouter 계정과 크레딧이 있으면 키를 새로 만들 필요가 없다 |
+| 없음 | 규칙 기반 판별(`RuleTriage`)로 동작 |
+
+두 제공자 모두 TypeSafe 호환 `systemone` 형식을 쓰므로, 어댑터는 **base URL, 키, 모델 ID만 다른 같은 클라이언트**로 만든다. 한쪽에서 오류가 나도 다른 쪽으로 자동 전환하지는 않는다. 사용자가 고른 제공자로만 비용이 나가야 하기 때문이다. 대신 실패한 후보는 `RuleTriage`로 판별하고 `triage_degraded`로 표시한다.
 
 ```python
 class TriageModel(Protocol):
     def judge(self, state: TriageState) -> TriageResult: ...
-    # TriageResult: exposure_probs, route_probs, confidence, model_version
+    # TriageResult: exposure_probs, route_probs, confidence, provider, model_version
 
-class JevTriage(TriageModel): ...     # TypeSafe JEV
-class RuleTriage(TriageModel): ...    # 키가 없을 때 쓰는 규칙 기반
+class SystemOneTriage(TriageModel):          # JEV systemone 형식 공통 구현
+    def __init__(self, base_url: str, api_key: str, model: str): ...
+
+def jev_typesafe(key: str) -> SystemOneTriage:
+    return SystemOneTriage("https://api.typesafe.ai/v1", key, model=JEV_TYPESAFE_MODEL)
+
+def jev_openrouter(key: str) -> SystemOneTriage:
+    return SystemOneTriage("https://openrouter.ai/api/v1", key, model="typesafe/jev-1.14")
+
+class RuleTriage(TriageModel): ...           # JEV 키가 없거나 호출 실패 시
 ```
+
+**OpenRouter의 `typesafe/jev-router`는 쓰지 않는다.** 이 모델은 JEV가 요청마다 응답할 LLM과 effort를 골라 OpenRouter 안에서 바로 실행한다. 다만 이 서비스에는 맞지 않는다.
+
+- 분석은 사용자의 Anthropic 키로 Claude를 호출해야 한다.
+- §4.4의 안전 규칙(KEV/Critical은 최소 Sonnet, 예산 상한)을 적용할 수 없다.
+- 프롬프트 캐싱과 Batch API를 직접 제어할 수 없다.
+
+그래서 JEV는 **라우팅 결정만** 받고, 실행은 LLM Gateway가 한다.
 
 ## 5. LLM Gateway와 토큰 최적화
 
@@ -202,11 +238,11 @@ class RuleTriage(TriageModel): ...    # 키가 없을 때 쓰는 규칙 기반
 
 | 항목 | 방식 |
 |------|------|
-| 입력 | 웹 UI 설정 화면. Anthropic 키는 필수, TypeSafe 키는 선택 |
-| 검증 | Anthropic은 `GET /v1/models`로 확인 (토큰 소모 없음). TypeSafe는 최소 요청 1회로 확인 |
+| 입력 | 웹 UI 설정 화면. Anthropic 키는 필수. JEV 키는 선택이며, 제공자(TypeSafe 또는 OpenRouter)와 함께 입력 |
+| 검증 | Anthropic은 `GET /v1/models`로 확인 (토큰 소모 없음). JEV는 고른 제공자에 최소 판별 요청 1회로 확인 |
 | 저장 | AES-256-GCM으로 암호화. 마스터 키는 환경변수로 받고, Phase 2에서 KMS로 전환. 화면에는 끝 4자리만 표시 |
 | 사용 | 워커가 호출 직전에만 복호화하고 메모리에만 둔다 |
-| 유출 방지 | 로깅 필터로 `sk-ant-` 패턴을 마스킹하고, 예외 메시지와 트레이스에서 헤더를 제거 |
+| 유출 방지 | 로깅 필터로 `sk-ant-`, `sk-or-` 등 키 패턴과 저장된 키 문자열을 마스킹하고, 예외 메시지와 트레이스에서 `Authorization`/`x-api-key` 헤더를 제거 |
 | 교체/삭제 | 키를 교체하면 진행 중인 작업은 다음 호출부터 새 키 사용. 삭제 시 암호문 즉시 폐기 |
 
 워크스페이스별 모델 설정의 기본값은 다음과 같다.
@@ -242,9 +278,10 @@ class RuleTriage(TriageModel): ...    # 키가 없을 때 쓰는 규칙 기반
 
 호출마다 아래 값을 `llm_usage` 테이블에 기록한다.
 
-- 공통: `provider`(anthropic/typesafe), `model`, `stage`(profile/jev/haiku/sonnet/opus), `finding_id`, `batch` 여부
+- 공통: `provider`(anthropic/typesafe/openrouter), `model`, `stage`(profile/jev/haiku/sonnet/opus), `finding_id`, `batch` 여부
 - Anthropic: `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`
-- 비용은 설정 파일의 단가표로 계산한다. 단가가 바뀌면 단가표만 갱신한다.
+- JEV: 입력 토큰. OpenRouter는 응답에 실제 과금액이 오면 그 값을 우선 기록한다.
+- 그 외 비용은 설정 파일의 `(provider, model)`별 단가표로 계산한다. 단가가 바뀌면 단가표만 갱신한다.
 
 대시보드에는 다음을 보여준다.
 
@@ -279,8 +316,8 @@ risk = 100 × severity × exploit × reachability × exposure
 
 | 테이블 | 주요 컬럼 |
 |--------|-----------|
-| `workspaces` | id, name, monthly_budget_usd, model_settings |
-| `api_credentials` | workspace_id, provider, ciphertext, last4, validated_at |
+| `workspaces` | id, name, monthly_budget_usd, model_settings, jev_provider(typesafe/openrouter/none), jev_model |
+| `api_credentials` | workspace_id, provider(anthropic/typesafe/openrouter), ciphertext, last4, validated_at |
 | `projects` | workspace_id, repo_url, exposure, scan_schedule |
 | `components` | project_id, purl, version, direct, scope, manifest_path |
 | `code_files` | project_id, path, sha256, imports[], is_test |
@@ -288,7 +325,7 @@ risk = 100 × severity × exploit × reachability × exposure
 | `exploit_signals` | cve_id, epss, epss_date, in_kev |
 | `advisory_profiles` | advisory_id, advisory_modified, profile(jsonb), prompt_version |
 | `findings` | project_id, component_id, advisory_id, status, verdict, risk_score, grade |
-| `triage_results` | finding_id, triage_model, model_version, exposure_probs, route_probs, confidence, action |
+| `triage_results` | finding_id, provider, model_version, exposure_probs, route_probs, confidence, action, degraded |
 | `analyses` | finding_id, model, verdict, confidence, rationale, evidence(jsonb), cache_key |
 | `llm_usage` | workspace_id, provider, model, stage, tokens…, cost_usd, created_at |
 | `feedback` | finding_id, user_verdict, reason. JEV 임계값 보정용 |
@@ -304,7 +341,7 @@ risk = 100 × severity × exploit × reachability × exposure
 | DB | PostgreSQL 16 | jsonb, 배열 인덱스 |
 | 큐/스케줄 | Redis + arq | 비동기 워커와 cron 작업을 한 곳에서 |
 | LLM | `anthropic` Python SDK | 구조화 출력, 배치, 캐싱 지원 |
-| 판별 | TypeSafe JEV (HTTP) | `TriageModel` 어댑터로 격리 |
+| 판별 | JEV (HTTP, TypeSafe 또는 OpenRouter) | `TriageModel` 어댑터로 격리. 두 제공자 모두 `systemone` 형식 |
 | 배포 | Docker Compose | self-host 단일 워크스페이스 |
 
 ## 9. 디렉터리 구조 (예정)
@@ -314,7 +351,8 @@ autocve/
   collector/      # osv.py, epss.py, kev.py
   inventory/      # github.py, parsers/{npm,pypi}.py, code_index.py
   matcher/        # versions.py, matcher.py
-  triage/         # filters.py(G0), evidence.py, jev.py, rules.py, policy.py
+  triage/         # filters.py(G0), evidence.py, rules.py, policy.py
+    jev/          # base.py(SystemOneTriage), providers.py(typesafe, openrouter)
   analysis/       # profile.py, haiku.py, deep_agent.py, tools.py
   llm/            # gateway.py, pricing.py, usage.py, prompts/, schemas.py
   scoring/        # risk.py
@@ -334,7 +372,7 @@ docker-compose.yml
 
 - 저장소 코드는 컨테이너 내부 볼륨에만 clone하고, 스캔이 끝나면 지운다. 인덱스(import 목록, 해시)만 남긴다.
 - 외부로 나가는 데이터는 두 종류다.
-  - 판별·분석 요청에 담긴 **코드 스니펫**: 사용자 키로 Anthropic과 TypeSafe에 전송된다.
+  - 판별·분석 요청에 담긴 **코드 스니펫**: 사용자 키로 Anthropic과 JEV 제공자에 전송된다. OpenRouter를 고르면 OpenRouter를 거쳐 TypeSafe까지 두 곳을 지난다.
   - 취약점 공개 정보
 - UI와 문서에 데이터 전송 범위를 명시한다. 프로젝트 단위로 "JEV에 코드 스니펫 전송 안 함" 옵션을 둔다. 이 옵션을 켜면 JEV state에서 스니펫을 빼고 메타데이터만 보낸다.
 - 분석 대상 코드와 취약점 설명은 신뢰할 수 없는 입력으로 다룬다. 프롬프트 인젝션 대비로 다음을 지킨다.
