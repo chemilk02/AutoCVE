@@ -94,7 +94,7 @@ def validate_typesafe(
             "ping": {
                 "type": "choice",
                 "instructions": "Select ok.",
-                "options": {"ok": "Always select this option.", "other": "Never select this."},
+                "criteria": {"ok": "Always select this option.", "other": "Never select this."},
             }
         },
     }
