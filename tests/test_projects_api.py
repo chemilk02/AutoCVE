@@ -144,3 +144,27 @@ def test_rule_based_triage_hides_percentage():
         route="haiku",
     )
     assert describe_triage(result)["exposure"] == "영향 가능"
+
+
+def test_detail_shows_grade_and_analysis(client, session_factory):
+    from autocve.models import Analysis
+
+    test_detail_shows_findings_with_signals(client, session_factory)
+    with session_factory() as session:
+        finding = session.scalar(select(Finding))
+        finding.risk_score, finding.grade = 98.0, "critical"
+        session.add(
+            Analysis(
+                finding_id=finding.id,
+                model="claude-sonnet-5-5",
+                verdict="affected",
+                rationale="render.js에서 사용자 입력이 _.template로 전달됩니다.",
+                cache_key="",
+            )
+        )
+        session.commit()
+        project_id = finding.project_id
+    page = client.get(f"/projects/{project_id}").text
+    assert "Critical 1" in page
+    assert "영향 있음" in page and "claude-sonnet-5-5" in page
+    assert "render.js에서 사용자 입력이" in page

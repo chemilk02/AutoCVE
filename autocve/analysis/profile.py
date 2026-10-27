@@ -210,7 +210,8 @@ def _extract(
         response = gateway.create(
             stage="profile",
             model=MODEL,
-            max_tokens=2000,
+            # Haiku 5.5는 기본으로 생각(thinking)을 하고, 그 토큰도 max_tokens에 포함된다.
+            max_tokens=4000,
             system=[
                 {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
             ],

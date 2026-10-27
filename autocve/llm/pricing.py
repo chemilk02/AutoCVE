@@ -33,7 +33,12 @@ PRICES: dict[tuple[str, str], Price] = {
     ("anthropic", "claude-haiku-5-5"): _anthropic("0.10", "0.50"),
     ("anthropic", "claude-sonnet-5-5"): _anthropic("2", "10", "0.20"),
     ("anthropic", "claude-opus-5-5"): _anthropic("4", "20", "0.20"),
+    # 서버 측 fallback이 거부 범주에 따라 고르는 모델
+    ("anthropic", "claude-opus-4-8"): _anthropic("5", "25"),
 }
+
+# Batch API는 모든 토큰을 50% 가격으로 받는다.
+BATCH_DISCOUNT = Decimal("0.5")
 
 MILLION = Decimal(1_000_000)
 

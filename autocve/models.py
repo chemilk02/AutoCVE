@@ -258,6 +258,8 @@ class Finding(Base):
     verdict: Mapped[str | None] = mapped_column(String(24))
     risk_score: Mapped[float | None] = mapped_column(Float)
     grade: Mapped[str | None] = mapped_column(String(16))
+    # 점수를 구성한 요소 값 (§6). 화면에서 등급의 이유를 보여주는 데 쓴다.
+    risk_factors: Mapped[dict[str, Any]] = mapped_column(default=dict)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -298,6 +300,22 @@ class Analysis(Base):
     evidence: Mapped[list[Any]] = mapped_column(default=list)
     cache_key: Mapped[str] = mapped_column(String(128), index=True)
     created_at: Mapped[datetime] = created_at_column()
+
+
+class AnalysisBatch(Base):
+    """Batch API로 보낸 경량 분석 묶음. 결과는 워커가 주기적으로 확인해 반영한다."""
+
+    __tablename__ = "analysis_batches"
+
+    id: Mapped[int] = mapped_column(IdType, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    batch_id: Mapped[str] = mapped_column(String(100), unique=True)
+    model: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), default="in_progress")  # in_progress | ended
+    # custom_id → finding_id, 분석 캐시 키
+    requests: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    created_at: Mapped[datetime] = created_at_column()
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class LlmUsage(Base):

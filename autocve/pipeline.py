@@ -7,6 +7,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from autocve.analysis.run import analyze_findings, collect_batches
 from autocve.collector import exploit, osv
 from autocve.config import Settings
 from autocve.credentials.service import load_secret
@@ -14,6 +15,7 @@ from autocve.ecosystems import SUPPORTED
 from autocve.inventory.scan import checked_out, log_scan, scan_checkout
 from autocve.matcher.matcher import MatchResult, match_advisories, match_components
 from autocve.models import Component, Project, Provider, Workspace
+from autocve.scoring.risk import score_findings
 from autocve.security.keyvault import KeyVault
 from autocve.triage.run import TriageSummary, triage_findings
 
@@ -75,6 +77,8 @@ def sync_exploit_signals(session: Session, http: httpx.Client, settings: Setting
             session.rollback()
             logger.warning("%s 수집 실패: %s", name, e)
             status[name] = f"실패: {type(e).__name__}"
+    # 악용 신호가 바뀌면 Claude 호출 없이 위험도만 다시 계산한다.
+    status["rescored"] = str(score_findings(session))
     return status
 
 
@@ -88,6 +92,7 @@ class ProjectScanSummary:
     resolved_findings: int
     manifest_errors: list[str]
     triage: dict
+    analysis: dict
 
 
 def _triage_dict(summary: TriageSummary) -> dict:
@@ -108,6 +113,7 @@ def scan_and_match(
     http: httpx.Client | None = None,
     allow_local: bool = False,
     triage_kwargs: dict | None = None,
+    analysis_kwargs: dict | None = None,
 ) -> ProjectScanSummary:
     """clone → 스캔 → 매칭 → 판별.
 
@@ -129,6 +135,9 @@ def scan_and_match(
             http=http,
             **(triage_kwargs or {}),
         )
+        analysis = analyze_findings(
+            session, project, vault=vault, checkout=root, **(analysis_kwargs or {})
+        )
     return ProjectScanSummary(
         project_id=project.id,
         commit=result.commit,
@@ -138,6 +147,7 @@ def scan_and_match(
         resolved_findings=len(matched.resolved),
         manifest_errors=result.manifest_errors,
         triage=_triage_dict(triage),
+        analysis=analysis.as_dict(),
     )
 
 
@@ -150,8 +160,9 @@ def triage_project(
     http: httpx.Client | None = None,
     allow_local: bool = False,
     triage_kwargs: dict | None = None,
+    analysis_kwargs: dict | None = None,
 ) -> dict:
-    """피드에서 새 취약점이 들어와 생긴 Finding을 판별한다. 증거 수집을 위해 다시 clone한다."""
+    """판별 대기·분석 대기 Finding을 처리한다. 증거 수집과 심층 분석을 위해 다시 clone한다."""
     token = _github_token(session, project, vault)
     with checked_out(
         session, project, token=token, workdir=settings.scan_workdir, allow_local=allow_local
@@ -165,4 +176,14 @@ def triage_project(
             http=http,
             **(triage_kwargs or {}),
         )
-    return _triage_dict(summary)
+        analysis = analyze_findings(
+            session, project, vault=vault, checkout=root, **(analysis_kwargs or {})
+        )
+    return {"triage": _triage_dict(summary), "analysis": analysis.as_dict()}
+
+
+def collect_analysis_batches(session: Session, vault: KeyVault) -> dict:
+    results = {}
+    for workspace in session.scalars(select(Workspace)):
+        results[workspace.id] = collect_batches(session, workspace, vault)
+    return results

@@ -158,3 +158,19 @@ button.danger { background: transparent; color: var(--error); border-color: var(
 .settings-row select { flex: 0 1 200px; }
 label.check { display: flex; gap: 6px; align-items: center; }
 label.check input { flex: none; }
+
+.grade {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 8px;
+  margin: 0 6px 2px 0;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.grade-critical { color: var(--error); }
+.grade-high { color: var(--warning); }
+.grade-medium { color: var(--accent); }
+.grade-low, .grade-info { color: var(--muted); }
+.analysis { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }

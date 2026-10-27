@@ -118,8 +118,13 @@ def triage_findings(
     config: PolicyConfig | None = None,
 ) -> TriageSummary:
     """프로젝트의 `new` Finding을 판별한다. `jev`를 넘기지 않으면 워크스페이스 설정을 따른다."""
-    config = config or PolicyConfig()
     workspace = session.get(Workspace, project.workspace_id)
+    if config is None:
+        # 감사 표본 오판율이 높으면 분석 단계가 임계값을 올려 둔다 (analysis/run.py).
+        threshold = (workspace.model_settings or {}).get("auto_close_threshold")
+        config = (
+            PolicyConfig(auto_close_threshold=float(threshold)) if threshold else PolicyConfig()
+        )
     gateway = gateway or LlmGateway(session, workspace, vault)
     if jev is None:
         jev = jev_model(session, workspace, vault, settings, http)
@@ -229,7 +234,8 @@ def triage_findings(
                 action=decision.action,
                 route=decision.route,
                 reasons=decision.reasons,
-                evidence=evidence.as_dict(),
+                # severe: 분석 단계가 Batch API로 미룰지 정할 때 쓴다 (KEV, CVSS 9 이상은 실시간)
+                evidence={**evidence.as_dict(), "severe": inp.severe},
                 audit=decision.audit,
                 degraded=degraded,
                 cache_key=key if judgement.exposure_probs else None,
