@@ -7,6 +7,8 @@ Finding이 컴포넌트를 참조하므로, 다시 넣으면 기존 판정 이�
 import logging
 import shutil
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -126,22 +128,23 @@ def scan_checkout(session: Session, project: Project, root: Path, commit: str | 
     )
 
 
-def scan_project(
+@contextmanager
+def checked_out(
     session: Session,
     project: Project,
     *,
     token: str | None = None,
     workdir: str | None = None,
     allow_local: bool = False,
-) -> ScanResult:
-    """저장소를 임시 디렉터리에 clone해서 스캔하고, 끝나면 코드를 지운다."""
+) -> Iterator[tuple[Path, str]]:
+    """저장소를 임시 디렉터리에 clone해 (경로, 커밋)을 넘기고, 블록이 끝나면 코드를 지운다."""
     tmp = Path(tempfile.mkdtemp(prefix="autocve-scan-", dir=workdir))
     try:
-        checkout = tmp / "repo"
+        root = tmp / "repo"
         try:
             commit = repo.clone(
                 project.repo_url,
-                checkout,
+                root,
                 branch=project.default_branch,
                 token=token,
                 allow_local=allow_local,
@@ -150,15 +153,17 @@ def scan_project(
             project.last_scan_error = str(e)[:500]
             session.commit()
             raise
-        result = scan_checkout(session, project, checkout, commit)
-        logger.info(
-            "프로젝트 %s 스캔: 컴포넌트 %d개(변경 %d, 삭제 %d), 코드 파일 %d개",
-            project.id,
-            result.total_components,
-            len(result.changed_components),
-            result.removed_components,
-            result.indexed_files,
-        )
-        return result
+        yield root, commit
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def log_scan(project: Project, result: ScanResult) -> None:
+    logger.info(
+        "프로젝트 %s 스캔: 컴포넌트 %d개(변경 %d, 삭제 %d), 코드 파일 %d개",
+        project.id,
+        result.total_components,
+        len(result.changed_components),
+        result.removed_components,
+        result.indexed_files,
+    )

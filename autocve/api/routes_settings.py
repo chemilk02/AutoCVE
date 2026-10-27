@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -8,6 +9,7 @@ from autocve.api.deps import AppState, get_session, get_state, templates
 from autocve.credentials import service
 from autocve.credentials.service import CredentialError
 from autocve.credentials.validators import ValidationResult
+from autocve.llm.gateway import budget_status
 from autocve.models import JEV_PROVIDERS, CredentialStatus, JevProvider, Provider
 
 router = APIRouter()
@@ -38,6 +40,7 @@ def _render(
         "settings_keys.html",
         {
             "workspace": workspace,
+            "budget": budget_status(session, workspace),
             "credentials": credentials,
             "labels": PROVIDER_LABELS,
             "jev_providers": JEV_PROVIDERS,
@@ -117,3 +120,27 @@ def choose_jev_provider(
     except CredentialError as e:
         return _render(request, session, ("error", str(e)), status_code=400)
     return _render(request, session, ("success", "JEV 제공자를 변경했습니다"))
+
+
+@router.post("/settings/budget", response_class=HTMLResponse)
+def update_budget(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    monthly_budget_usd: Annotated[str, Form()] = "",
+):
+    workspace = service.get_or_create_default_workspace(session)
+    value = monthly_budget_usd.strip()
+    if not value:
+        workspace.monthly_budget_usd = None
+    else:
+        try:
+            amount = Decimal(value)
+        except InvalidOperation:
+            amount = Decimal(-1)
+        if amount <= 0 or amount > Decimal("100000"):
+            return _render(
+                request, session, ("error", "예산은 0보다 큰 금액(USD)으로 입력하세요"), 400
+            )
+        workspace.monthly_budget_usd = amount.quantize(Decimal("0.01"))
+    session.commit()
+    return _render(request, session, ("success", "월 예산을 저장했습니다"))

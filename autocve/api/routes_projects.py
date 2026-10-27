@@ -10,7 +10,7 @@ from autocve.api.deps import AppState, get_session, get_state, templates
 from autocve.credentials import service
 from autocve.inventory.repo import RepoError, validate_repo_url
 from autocve.matcher.matcher import OPEN_STATUSES
-from autocve.models import Advisory, Component, ExploitSignal, Finding, Project
+from autocve.models import Advisory, Component, ExploitSignal, Finding, Project, TriageResult
 
 router = APIRouter()
 
@@ -19,6 +19,50 @@ EXPOSURES = {
     "internal": "prod, 내부망",
     "dev": "개발 전용",
 }
+
+
+ROUTE_LABELS = {"haiku": "Haiku", "sonnet": "Sonnet", "opus": "Opus"}
+ACTION_LABELS = {
+    "auto_close": "자동 종결",
+    "analyze": "분석 대기",
+    "malicious": "악성 패키지",
+    "dev_only": "dev 전용, 분석 생략",
+    "budget_exhausted": "예산 소진, 분석 보류",
+    "withdrawn": "취약점 철회",
+    "version_mismatch": "영향 버전 아님",
+}
+EXPOSURE_LABELS = {
+    "not_affected": "영향 없음",
+    "possibly_affected": "영향 가능",
+    "likely_affected": "영향 가능성 높음",
+}
+
+
+def describe_triage(result: TriageResult | None) -> dict | None:
+    if result is None:
+        return None
+    exposure = None
+    if result.exposure_probs:
+        top = max(result.exposure_probs, key=result.exposure_probs.get)
+        exposure = EXPOSURE_LABELS.get(top, top)
+        if result.provider != "rules":
+            # 규칙 기반 값은 확률이 아니므로 퍼센트로 보여주지 않는다.
+            exposure += f" {result.exposure_probs[top]:.0%}"
+    action = ACTION_LABELS.get(result.action, result.action)
+    if result.route:
+        action += f" → {ROUTE_LABELS.get(result.route, result.route)}"
+    if result.audit:
+        action += " (감사 표본)"
+    source = {"typesafe": "JEV", "openrouter": "JEV", "cache": "캐시", "rules": "규칙"}.get(
+        result.provider, result.provider
+    )
+    return {
+        "action": action,
+        "exposure": exposure,
+        "source": source + (" (JEV 실패로 대체)" if result.degraded else ""),
+        "reasons": result.reasons or [],
+        "closed": result.action in ("auto_close", "withdrawn", "version_mismatch"),
+    }
 
 
 @router.get("/", include_in_schema=False)
@@ -128,6 +172,15 @@ def _render_detail(
         s.cve_id: s
         for s in session.scalars(select(ExploitSignal).where(ExploitSignal.cve_id.in_(cves)))
     }
+    latest_triage: dict[int, TriageResult] = {}
+    finding_ids = [f.id for f, _, _ in rows]
+    for i in range(0, len(finding_ids), 500):
+        for result in session.scalars(
+            select(TriageResult)
+            .where(TriageResult.finding_id.in_(finding_ids[i : i + 500]))
+            .order_by(TriageResult.id)
+        ):
+            latest_triage[result.finding_id] = result
     findings = []
     for finding, component, advisory in rows:
         advisory_cves = [a for a in [advisory.id, *(advisory.aliases or [])] if a in signals]
@@ -141,6 +194,7 @@ def _render_detail(
                 "epss": epss,
                 "in_kev": in_kev,
                 "malicious": advisory.id.startswith("MAL-"),
+                "triage": describe_triage(latest_triage.get(finding.id)),
             }
         )
     summary = {
@@ -184,6 +238,22 @@ async def rescan_project(
     project = _get_project(session, project_id)
     await state.queue.enqueue("scan_project", project.id)
     return RedirectResponse(f"/projects/{project.id}?queued=1", status_code=303)
+
+
+@router.post("/projects/{project_id}/settings")
+def update_project_settings(
+    project_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    exposure: Annotated[str, Form()],
+    jev_snippets: Annotated[str | None, Form()] = None,
+):
+    project = _get_project(session, project_id)
+    if exposure not in EXPOSURES:
+        raise HTTPException(status_code=400, detail="노출 범위 값이 올바르지 않습니다")
+    project.exposure = exposure
+    project.jev_snippets = jev_snippets == "on"
+    session.commit()
+    return RedirectResponse(f"/projects/{project.id}", status_code=303)
 
 
 @router.post("/projects/{project_id}/delete")

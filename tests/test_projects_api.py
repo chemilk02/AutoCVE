@@ -82,3 +82,65 @@ def test_rescan_and_delete(client, queue, session_factory):
 
 def test_unknown_project_404(client):
     assert client.get("/projects/999").status_code == 404
+
+
+def test_project_settings_update(client, session_factory):
+    client.post("/projects", data={"name": "web", "repo_url": "https://github.com/acme/web"})
+    with session_factory() as session:
+        project_id = session.scalar(select(Project.id))
+    client.post(f"/projects/{project_id}/settings", data={"exposure": "dev"})
+    with session_factory() as session:
+        project = session.get(Project, project_id)
+        assert (project.exposure, project.jev_snippets) == ("dev", False)
+    client.post(
+        f"/projects/{project_id}/settings", data={"exposure": "internal", "jev_snippets": "on"}
+    )
+    with session_factory() as session:
+        project = session.get(Project, project_id)
+        assert (project.exposure, project.jev_snippets) == ("internal", True)
+    assert (
+        client.post(f"/projects/{project_id}/settings", data={"exposure": "x"}).status_code == 400
+    )
+
+
+def test_detail_shows_triage_result(client, session_factory):
+    from autocve.models import TriageResult
+
+    test_detail_shows_findings_with_signals(client, session_factory)
+    with session_factory() as session:
+        finding = session.scalar(select(Finding))
+        session.add(
+            TriageResult(
+                finding_id=finding.id,
+                provider="openrouter",
+                exposure_probs={
+                    "not_affected": 0.1,
+                    "possibly_affected": 0.2,
+                    "likely_affected": 0.7,
+                },
+                route_probs={"sonnet": 1.0},
+                confidence=0.7,
+                action="analyze",
+                route="sonnet",
+                reasons=["취약 API 사용 위치 2곳"],
+            )
+        )
+        session.commit()
+        project_id = finding.project_id
+    page = client.get(f"/projects/{project_id}").text
+    assert "분석 대기 → Sonnet" in page
+    assert "영향 가능성 높음 70%" in page
+    assert "취약 API 사용 위치 2곳" in page
+
+
+def test_rule_based_triage_hides_percentage():
+    from autocve.api.routes_projects import describe_triage
+    from autocve.models import TriageResult
+
+    result = TriageResult(
+        provider="rules",
+        exposure_probs={"not_affected": 0.2, "possibly_affected": 0.6, "likely_affected": 0.2},
+        action="analyze",
+        route="haiku",
+    )
+    assert describe_triage(result)["exposure"] == "영향 가능"

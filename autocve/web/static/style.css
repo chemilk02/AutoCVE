@@ -153,3 +153,8 @@ button.danger { background: transparent; color: var(--error); border-color: var(
 .table tr.closed td { opacity: 0.55; }
 .table code { word-break: break-all; }
 .id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+
+.settings-row { margin: 8px 0 4px; }
+.settings-row select { flex: 0 1 200px; }
+label.check { display: flex; gap: 6px; align-items: center; }
+label.check input { flex: none; }

@@ -22,6 +22,17 @@
         · 직접 {{ summary.direct }} · dev {{ summary.dev }})</span>
       {% endif %}</dd>
   </dl>
+  <form method="post" action="/projects/{{ project.id }}/settings" class="row settings-row">
+    <label for="exposure">노출 범위</label>
+    <select id="exposure" name="exposure">
+      {% for value, label in exposures.items() %}
+        <option value="{{ value }}" {{ "selected" if project.exposure == value }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <label class="check"><input type="checkbox" name="jev_snippets" {{ "checked" if project.jev_snippets }}>
+      JEV 판별 요청에 코드 스니펫 포함</label>
+    <button type="submit" class="secondary">저장</button>
+  </form>
   <div class="row actions">
     <form method="post" action="/projects/{{ project.id }}/scan"><button type="submit">다시 스캔</button></form>
     <form method="post" action="/projects/{{ project.id }}/delete"
@@ -33,14 +44,14 @@
 
 <section class="card">
   <h2>후보 취약점 <span class="tag">{{ findings | length }}</span></h2>
-  <p class="muted">버전이 영향 범위에 드는 후보입니다. 실제 영향 판별은 다음 단계에서 이뤄집니다.</p>
+  <p class="muted">버전이 영향 범위에 드는 후보와 판별 결과입니다. Claude 분석은 다음 단계에서 이뤄집니다.</p>
   {% if findings %}
     <div class="table-wrap">
     <table class="table">
-      <thead><tr><th>취약점</th><th>패키지</th><th>신호</th><th>상태</th></tr></thead>
+      <thead><tr><th>취약점</th><th>패키지</th><th>신호</th><th>판별</th></tr></thead>
       <tbody>
       {% for f in findings %}
-        <tr class="{{ '' if f.finding.status in open_statuses else 'closed' }}">
+        <tr class="{{ 'closed' if f.finding.status not in open_statuses or (f.triage and f.triage.closed) else '' }}">
           <td><a href="https://osv.dev/vulnerability/{{ f.advisory.id }}" rel="noopener noreferrer" target="_blank" class="id">{{ f.advisory.id }}</a>
             <div class="small">{{ f.advisory.summary or "" }}</div></td>
           <td><code>{{ f.component.name }}@{{ f.component.version }}</code>
@@ -50,7 +61,15 @@
             {% if f.in_kev %}<span class="badge badge-invalid">KEV</span>{% endif %}
             {% if f.epss is not none %}EPSS {{ "%.1f" | format(f.epss * 100) }}%{% endif %}
           </td>
-          <td>{{ f.finding.status }}</td>
+          <td class="small">
+            {% if f.triage %}
+              <div><strong>{{ f.triage.action }}</strong></div>
+              {% if f.triage.exposure %}<div>{{ f.triage.exposure }}</div>{% endif %}
+              <div class="muted">{{ f.triage.source }}{% if f.triage.reasons %} · {{ f.triage.reasons | join(" · ") }}{% endif %}</div>
+            {% else %}
+              <span class="muted">{{ "판별 대기" if f.finding.status == "new" else f.finding.status }}</span>
+            {% endif %}
+          </td>
         </tr>
       {% endfor %}
       </tbody>

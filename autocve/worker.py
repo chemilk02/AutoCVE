@@ -37,18 +37,33 @@ def _sync_feeds(ctx: dict) -> dict:
     return summary.__dict__
 
 
+def _triage(ctx: dict, project_id: int) -> dict:
+    with ctx["session_factory"]() as session, pipeline.http_client() as http:
+        project = session.get(Project, project_id)
+        if project is None:
+            return {"error": "프로젝트가 없습니다"}
+        try:
+            return pipeline.triage_project(
+                session, project, ctx["vault"], ctx["settings"], http=http
+            )
+        except RepoError as e:
+            return {"error": str(e)}
+
+
 def _sync_exploits(ctx: dict) -> dict:
     with ctx["session_factory"]() as session, pipeline.http_client() as http:
         return pipeline.sync_exploit_signals(session, http, ctx["settings"])
 
 
 def _scan(ctx: dict, project_id: int) -> dict:
-    with ctx["session_factory"]() as session:
+    with ctx["session_factory"]() as session, pipeline.http_client() as http:
         project = session.get(Project, project_id)
         if project is None:
             return {"error": "프로젝트가 없습니다"}
         try:
-            return pipeline.scan_and_match(session, project, ctx["vault"], ctx["settings"]).__dict__
+            return pipeline.scan_and_match(
+                session, project, ctx["vault"], ctx["settings"], http=http
+            ).__dict__
         except RepoError as e:
             return {"error": str(e)}
 
@@ -66,7 +81,11 @@ async def _exclusive(ctx: dict, name: str, func) -> dict:
 
 
 async def sync_feeds(ctx: dict) -> dict:
-    return await _exclusive(ctx, "sync_feeds", _sync_feeds)
+    result = await _exclusive(ctx, "sync_feeds", _sync_feeds)
+    # 새 취약점으로 Finding이 생긴 프로젝트는 판별 작업을 따로 돌린다 (clone이 필요하다).
+    for project_id in result.get("projects_to_triage", []):
+        await ctx["redis"].enqueue_job("triage_project", project_id)
+    return result
 
 
 async def sync_exploits(ctx: dict) -> dict:
@@ -75,6 +94,10 @@ async def sync_exploits(ctx: dict) -> dict:
 
 async def scan_project(ctx: dict, project_id: int) -> dict:
     return await asyncio.to_thread(_scan, ctx, project_id)
+
+
+async def triage_project(ctx: dict, project_id: int) -> dict:
+    return await asyncio.to_thread(_triage, ctx, project_id)
 
 
 async def scan_all_projects(ctx: dict) -> int:
@@ -86,7 +109,7 @@ async def scan_all_projects(ctx: dict) -> int:
 
 
 class WorkerSettings:
-    functions = [sync_feeds, sync_exploits, scan_project, scan_all_projects]
+    functions = [sync_feeds, sync_exploits, scan_project, triage_project, scan_all_projects]
     cron_jobs = [
         cron(sync_feeds, minute=7, run_at_startup=True),  # 매시 7분
         cron(sync_exploits, hour=6, minute=17, run_at_startup=True),  # 매일 06:17 UTC
