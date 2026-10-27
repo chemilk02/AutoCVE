@@ -7,7 +7,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from autocve.api import routes_projects, routes_settings
+from autocve.api import (
+    routes_findings,
+    routes_notifications,
+    routes_projects,
+    routes_settings,
+    routes_usage,
+)
 from autocve.api.deps import AppState
 from autocve.api.jobs import ArqQueue, JobQueue
 from autocve.api.security import AccessControlMiddleware
@@ -16,6 +22,7 @@ from autocve.credentials.service import get_or_create_default_workspace
 from autocve.credentials.validators import Validator, default_validators
 from autocve.db import make_engine, make_session_factory
 from autocve.models import Provider
+from autocve.notify.service import channels_for
 from autocve.security.keyvault import KeyVault
 from autocve.security.redaction import install_log_redaction
 
@@ -26,6 +33,7 @@ def create_app(
     settings: Settings | None = None,
     validators: dict[Provider, Validator] | None = None,
     queue: JobQueue | None = None,
+    channel_factory=None,
 ) -> FastAPI:
     settings = settings or get_settings()
     logging.basicConfig(level=settings.log_level)
@@ -38,6 +46,7 @@ def create_app(
         vault=KeyVault.from_b64(settings.master_key.get_secret_value()),
         validators=validators or default_validators(settings),
         queue=queue or ArqQueue(settings.redis_url),
+        channel_factory=channel_factory or channels_for,
     )
 
     @asynccontextmanager
@@ -57,6 +66,9 @@ def create_app(
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     app.include_router(routes_settings.router)
     app.include_router(routes_projects.router)
+    app.include_router(routes_findings.router)
+    app.include_router(routes_notifications.router)
+    app.include_router(routes_usage.router)
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:

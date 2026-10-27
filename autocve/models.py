@@ -37,6 +37,7 @@ class Provider(StrEnum):
     TYPESAFE = "typesafe"
     OPENROUTER = "openrouter"
     GITHUB = "github"  # 비공개 저장소 clone용 PAT
+    SLACK = "slack"  # Slack Incoming Webhook URL (URL 자체가 비밀이다)
 
 
 JEV_PROVIDERS = (Provider.TYPESAFE, Provider.OPENROUTER)
@@ -89,6 +90,8 @@ class Workspace(Base):
     model_settings: Mapped[dict[str, Any]] = mapped_column(default=dict)
     jev_provider: Mapped[str] = mapped_column(String(16), default=JevProvider.NONE)
     jev_model: Mapped[str | None] = mapped_column(String(64))
+    # 알림 설정: email_to(list), immediate_grade("critical"|"high"), digest(bool)
+    notification_settings: Mapped[dict[str, Any]] = mapped_column(default=dict)
     created_at: Mapped[datetime] = created_at_column()
 
     credentials: Mapped[list["ApiCredential"]] = relationship(
@@ -260,6 +263,9 @@ class Finding(Base):
     grade: Mapped[str | None] = mapped_column(String(16))
     # 점수를 구성한 요소 값 (§6). 화면에서 등급의 이유를 보여주는 데 쓴다.
     risk_factors: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    # 마지막으로 알린 시각과 그때의 등급. 등급이 올라가면 다시 알린다.
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notified_grade: Mapped[str | None] = mapped_column(String(16))
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -337,11 +343,35 @@ class LlmUsage(Base):
     created_at: Mapped[datetime] = created_at_column()
 
 
+class FeedbackAction(StrEnum):
+    CONFIRM = "confirm"  # 영향 있음 확인 (수용)
+    NOT_AFFECTED = "not_affected"  # 해당 없음 (사유 필수)
+    FIXED = "fixed"  # 수정 완료
+    REOPEN = "reopen"
+
+
 class Feedback(Base):
+    """사용자 처리 기록. 판정과 다르면 JEV 임계값 보정과 평가(M5)에 쓴다."""
+
     __tablename__ = "feedback"
 
     id: Mapped[int] = mapped_column(IdType, primary_key=True)
     finding_id: Mapped[int] = mapped_column(ForeignKey("findings.id", ondelete="CASCADE"))
-    user_verdict: Mapped[str] = mapped_column(String(24))
+    user_verdict: Mapped[str] = mapped_column(String(24))  # FeedbackAction
     reason: Mapped[str | None] = mapped_column(Text)
+    # 처리 시점의 시스템 판정. 사용자가 판정을 뒤집었는지 계산할 때 쓴다.
+    system_verdict: Mapped[str | None] = mapped_column(String(24))
+    created_at: Mapped[datetime] = created_at_column()
+
+
+class NotificationLog(Base):
+    __tablename__ = "notification_log"
+
+    id: Mapped[int] = mapped_column(IdType, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    channel: Mapped[str] = mapped_column(String(16))  # slack | email
+    kind: Mapped[str] = mapped_column(String(16))  # immediate | digest | test
+    finding_ids: Mapped[list[Any]] = mapped_column(default=list)
+    ok: Mapped[bool] = mapped_column(Boolean)
+    error: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = created_at_column()

@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +22,8 @@ class AppState:
     vault: KeyVault
     validators: dict[Provider, Validator]
     queue: JobQueue
+    # (session, workspace, vault, settings) → 알림 채널 목록. 테스트에서 바꿔 끼운다.
+    channel_factory: Callable
 
 
 def get_state(request: Request) -> AppState:

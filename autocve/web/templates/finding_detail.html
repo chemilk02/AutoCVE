@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}{{ advisory.id }} · {{ component.name }} · AutoCVE{% endblock %}
+
+{% block content %}
+<p class="muted small"><a href="/projects">프로젝트</a> / <a href="/projects/{{ project.id }}">{{ project.name }}</a> /</p>
+<h1 class="id-heading">{{ advisory.id }}</h1>
+<p>{{ advisory.summary or "" }}</p>
+
+<section class="card">
+  <div class="row">
+    {% if grade_label %}<span class="grade grade-{{ finding.grade }}">{{ grade_label }} {{ "%.0f" | format(finding.risk_score or 0) }}</span>{% endif %}
+    <strong>{{ verdict_labels.get(finding.verdict, finding.verdict) }}</strong>
+    <span class="muted">· {{ status_labels.get(finding.status, finding.status) }}</span>
+  </div>
+  <dl class="status">
+    <dt>패키지</dt><dd><code>{{ component.name }}@{{ component.version }}</code>
+      <span class="muted small">{{ "직접" if component.direct else "간접" }} · {{ component.scope }} · {{ component.manifest_path }}</span></dd>
+    <dt>설치 위치</dt><dd class="small"><code>{{ component.locator }}</code></dd>
+    <dt>별칭</dt><dd class="small">{{ (advisory.aliases or []) | join(", ") or "-" }}</dd>
+    <dt>원문</dt><dd class="small"><a href="https://osv.dev/vulnerability/{{ advisory.id }}" rel="noopener noreferrer" target="_blank">osv.dev에서 보기</a></dd>
+  </dl>
+</section>
+
+{% if finding.risk_factors %}
+<section class="card">
+  <h2>위험도 구성</h2>
+  {% set f = finding.risk_factors %}
+  <p class="muted small">위험도 = 100 × 심각도 × 악용 가능성 × 도달성 × 노출도</p>
+  <table class="table">
+    <tbody>
+      <tr><th>심각도</th><td>{{ f.severity }}</td><td class="muted small">{% if f.malicious %}악성 패키지{% elif f.cvss is not none %}CVSS {{ f.cvss }}{% else %}심각도 정보 없음 (5.0으로 계산){% endif %}</td></tr>
+      <tr><th>악용 가능성</th><td>{{ f.exploit }}</td><td class="muted small">{% if f.in_kev %}CISA KEV 등재{% elif f.epss is not none %}EPSS {{ "%.1f" | format(f.epss * 100) }}%{% else %}EPSS 정보 없음{% endif %}</td></tr>
+      <tr><th>도달성</th><td>{{ f.reachability }}</td><td class="muted small">{{ verdict_labels.get(f.verdict, f.verdict) }}</td></tr>
+      <tr><th>노출도</th><td>{{ f.exposure }}</td><td class="muted small">{{ exposures.get(project.exposure, project.exposure) }}{% if component.scope == "dev" %} · dev 의존성{% endif %}</td></tr>
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>처리</h2>
+  <div class="row actions">
+    {% for action in ["confirm", "fixed"] %}
+      <form method="post" action="/findings/{{ finding.id }}/feedback">
+        <input type="hidden" name="action" value="{{ action }}">
+        <button type="submit" class="secondary">{{ feedback_labels[action] }}</button>
+      </form>
+    {% endfor %}
+    {% if finding.status in ("dismissed", "resolved") %}
+      <form method="post" action="/findings/{{ finding.id }}/feedback">
+        <input type="hidden" name="action" value="reopen">
+        <button type="submit" class="secondary">다시 열기</button>
+      </form>
+    {% endif %}
+  </div>
+  <form method="post" action="/findings/{{ finding.id }}/feedback" class="stack">
+    <input type="hidden" name="action" value="not_affected">
+    <label for="reason">해당 없음 사유 (필수)</label>
+    <input id="reason" name="reason" maxlength="2000" placeholder="예: 해당 기능은 관리자 전용 내부 도구에서만 사용">
+    <div><button type="submit" class="danger">해당 없음으로 닫기</button></div>
+  </form>
+  {% if feedback %}
+    <h3>처리 기록</h3>
+    <ul class="small">
+      {% for fb in feedback %}
+        <li>{{ fb.created_at.strftime("%Y-%m-%d %H:%M") }} · {{ feedback_labels.get(fb.user_verdict, fb.user_verdict) }}
+          <span class="muted">(당시 판정: {{ verdict_labels.get(fb.system_verdict, fb.system_verdict) }})</span>
+          {% if fb.reason %} - {{ fb.reason }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+
+{% if analyses %}
+<section class="card">
+  <h2>Claude 분석</h2>
+  {% for a in analyses %}
+    <div class="subcard">
+      <div><strong>{{ verdict_labels.get(a.verdict, {"refused": "분석 거부", "error": "분석 실패"}.get(a.verdict, a.verdict)) }}</strong>
+        <span class="muted small">{{ a.model }}{% if a.confidence is not none %} · 확신도 {{ "%.0f" | format(a.confidence * 100) }}%{% endif %} · {{ a.created_at.strftime("%Y-%m-%d %H:%M") }}</span></div>
+      {% if a.rationale %}<p>{{ a.rationale }}</p>{% endif %}
+      {% set flow = a.evidence | selectattr("data_flow", "defined") | map(attribute="data_flow") | list %}
+      {% if flow %}<p class="small">데이터 흐름: {{ flow | join(" → ") }}</p>{% endif %}
+      {% set locations = a.evidence | rejectattr("data_flow", "defined") | list %}
+      {% if locations %}
+        <ul class="small">{% for e in locations %}<li><code>{{ e.path }}:{{ e.line }}</code> {{ e.note }}</li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>판별</h2>
+  {% for t, d in triages %}
+    <div class="subcard">
+      <div><strong>{{ d.action }}</strong> <span class="muted small">{{ d.source }} · {{ t.created_at.strftime("%Y-%m-%d %H:%M") }}</span></div>
+      {% if d.exposure %}<div class="small">{{ d.exposure }}</div>{% endif %}
+      {% if d.reasons %}<div class="small muted">{{ d.reasons | join(" · ") }}</div>{% endif %}
+    </div>
+  {% else %}
+    <p class="muted">아직 판별하지 않았습니다.</p>
+  {% endfor %}
+  {% if evidence %}
+    <h3>증거</h3>
+    <p class="small">이 패키지를 import하는 prod 파일 {{ evidence.prod_import_count or 0 }}개, 테스트 파일 {{ evidence.test_import_count or 0 }}개
+      {% if evidence.symbols_searched %}· 취약 심볼({{ evidence.symbols_searched | join(", ") }}) 사용 위치 {{ evidence.call_site_count or 0 }}곳{% endif %}</p>
+    {% for s in snippets %}
+      <p class="small"><code>{{ s.path }}:{{ s.line }}</code></p>
+      <pre class="code">{{ s.code }}</pre>
+    {% endfor %}
+  {% endif %}
+</section>
+
+{% if advisory.details %}
+<section class="card">
+  <h2>취약점 설명</h2>
+  <pre class="prose">{{ advisory.details[:4000] }}{% if advisory.details | length > 4000 %}
+…(원문에서 계속){% endif %}</pre>
+</section>
+{% endif %}
+{% endblock %}

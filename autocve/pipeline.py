@@ -15,6 +15,7 @@ from autocve.ecosystems import SUPPORTED
 from autocve.inventory.scan import checked_out, log_scan, scan_checkout
 from autocve.matcher.matcher import MatchResult, match_advisories, match_components
 from autocve.models import Component, Project, Provider, Workspace
+from autocve.notify.service import notify_immediate, send_digest
 from autocve.scoring.risk import score_findings
 from autocve.security.keyvault import KeyVault
 from autocve.triage.run import TriageSummary, triage_findings
@@ -187,3 +188,23 @@ def collect_analysis_batches(session: Session, vault: KeyVault) -> dict:
     for workspace in session.scalars(select(Workspace)):
         results[workspace.id] = collect_batches(session, workspace, vault)
     return results
+
+
+def notify_all(
+    session: Session, vault: KeyVault, settings: Settings, *, digest: bool = False
+) -> dict:
+    """모든 워크스페이스에 즉시 알림(또는 일일 요약)을 보낸다.
+
+    알림 실패가 수집·분석 작업을 막지 않도록 예외는 기록만 한다.
+    """
+    sent = {}
+    for workspace in session.scalars(select(Workspace)):
+        try:
+            if digest:
+                sent[workspace.id] = send_digest(session, workspace, vault, settings)
+            else:
+                sent[workspace.id] = notify_immediate(session, workspace, vault, settings)
+        except Exception:  # noqa: BLE001 - 알림은 부가 기능이라 실패를 기록만 한다
+            logger.exception("워크스페이스 %s 알림 실패", workspace.id)
+            session.rollback()
+    return sent

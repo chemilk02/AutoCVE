@@ -122,6 +122,17 @@ def validate_github(
     return _http_result(response)
 
 
+def validate_slack_webhook(url: str) -> ValidationResult:
+    # 검증 요청을 보내면 채널에 메시지가 올라가므로 형식만 확인한다.
+    # 실제 전송은 알림 설정의 "테스트 전송"으로 확인한다.
+    if not url.startswith("https://hooks.slack.com/"):
+        return ValidationResult(
+            CredentialStatus.INVALID,
+            "Slack Webhook 주소는 https://hooks.slack.com/ 으로 시작합니다",
+        )
+    return ValidationResult(CredentialStatus.VALID, "형식 확인 (테스트 전송으로 확인하세요)")
+
+
 def default_validators(settings: Settings) -> dict[Provider, Validator]:
     return {
         Provider.ANTHROPIC: validate_anthropic,
@@ -132,4 +143,5 @@ def default_validators(settings: Settings) -> dict[Provider, Validator]:
             key, base_url=settings.typesafe_base_url, model=settings.jev_typesafe_model
         ),
         Provider.GITHUB: lambda key: validate_github(key, api_url=settings.github_api_url),
+        Provider.SLACK: validate_slack_webhook,
     }
