@@ -132,6 +132,8 @@ class Project(Base):
     last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_commit: Mapped[str | None] = mapped_column(String(64))
     last_scan_error: Mapped[str | None] = mapped_column(String(500))
+    # 끄면 JEV 판별 요청에 코드 스니펫을 넣지 않고 메타데이터만 보낸다 (§10)
+    jev_snippets: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = created_at_column()
 
 
@@ -185,6 +187,8 @@ class Advisory(Base):
     severity: Mapped[list[Any]] = mapped_column(default=list)
     affected: Mapped[list[Any]] = mapped_column(default=list)
     references: Mapped[list[Any]] = mapped_column(default=list)
+    # GHSA의 심각도 등급(severity: LOW/MODERATE/HIGH/CRITICAL) 등 DB별 부가 정보
+    database_specific: Mapped[dict[str, Any]] = mapped_column(default=dict)
 
 
 class AdvisoryPackage(Base):
@@ -265,13 +269,20 @@ class TriageResult(Base):
 
     id: Mapped[int] = mapped_column(IdType, primary_key=True)
     finding_id: Mapped[int] = mapped_column(ForeignKey("findings.id", ondelete="CASCADE"))
-    provider: Mapped[str] = mapped_column(String(16))  # typesafe | openrouter | rules
+    provider: Mapped[str] = mapped_column(String(16))  # typesafe | openrouter | rules | cache
     model_version: Mapped[str | None] = mapped_column(String(64))
     exposure_probs: Mapped[dict[str, Any]] = mapped_column(default=dict)
     route_probs: Mapped[dict[str, Any]] = mapped_column(default=dict)
     confidence: Mapped[float | None] = mapped_column(Float)
     action: Mapped[str] = mapped_column(String(24))
+    # action이 analyze일 때 분석할 모델 등급 (haiku | sonnet | opus)
+    route: Mapped[str | None] = mapped_column(String(16))
+    reasons: Mapped[list[Any]] = mapped_column(default=list)
+    evidence: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    audit: Mapped[bool] = mapped_column(Boolean, default=False)
     degraded: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 같은 입력이면 판별을 다시 하지 않도록 쓰는 키 (§4.1)
+    cache_key: Mapped[str | None] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = created_at_column()
 
 

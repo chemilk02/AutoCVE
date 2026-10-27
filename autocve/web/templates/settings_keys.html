@@ -76,6 +76,18 @@
 </section>
 
 <section class="card">
+  <h2>월 예산</h2>
+  <p class="muted">이번 달 사용액 ${{ "%.4f" | format(budget.used_usd) }}
+    {% if budget.limit_usd %}/ ${{ "%.2f" | format(budget.limit_usd) }} ({{ "%.0f" | format(budget.ratio * 100) }}%){% endif %}.
+    80%를 넘으면 Opus 대신 Sonnet을 쓰고, 100%가 되면 Claude 호출을 멈춥니다.</p>
+  <form method="post" action="/settings/budget" class="row">
+    <input name="monthly_budget_usd" inputmode="decimal" placeholder="예: 20 (비우면 제한 없음)"
+           value="{{ workspace.monthly_budget_usd if workspace.monthly_budget_usd is not none else '' }}">
+    <button type="submit" class="secondary">저장</button>
+  </form>
+</section>
+
+<section class="card">
   <h2>GitHub <span class="tag">선택</span></h2>
   <p class="muted">비공개 저장소를 clone할 때만 씁니다. 읽기 전용(Contents: Read) fine-grained 토큰을 권장합니다.
     github.com 저장소에만 전송합니다.</p>

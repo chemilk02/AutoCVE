@@ -169,3 +169,12 @@ def test_admin_password_required_when_configured(settings, validators):
             client.get("/settings/keys", headers={"Authorization": f"Basic {good}"}).status_code
             == 200
         )
+
+
+def test_budget_setting(client, settings):
+    assert client.post("/settings/budget", data={"monthly_budget_usd": "12.5"}).status_code == 200
+    assert str(workspace(settings).monthly_budget_usd) == "12.50"
+    assert client.post("/settings/budget", data={"monthly_budget_usd": "-3"}).status_code == 400
+    assert client.post("/settings/budget", data={"monthly_budget_usd": "abc"}).status_code == 400
+    client.post("/settings/budget", data={"monthly_budget_usd": ""})
+    assert workspace(settings).monthly_budget_usd is None

@@ -14,8 +14,9 @@
 
 - M0(기반) 완료: 저장소 골격, DB 스키마, Docker Compose, API 키 저장소
 - M1(데이터) 완료: OSV/EPSS/KEV 수집, 저장소 스캔(lockfile, 코드 import 인덱스), 버전 범위 매칭으로 후보 생성
+- M2(판별) 완료: 취약점 프로파일(Haiku, 취약점당 1회), 증거 수집, JEV 판별·라우팅(TypeSafe/OpenRouter), 규칙 기반 대체, 라우팅 정책, 사용량·예산 기록
 
-실제 영향 판별(JEV, Claude 분석)은 M2부터 들어갑니다.
+Claude 분석(Haiku/Sonnet/Opus)과 위험도 산정은 M3에서 들어갑니다.
 
 ## 실행 (Docker Compose)
 
@@ -53,7 +54,8 @@
 |------|------|------|
 | `sync_feeds` | 매시 7분, 워커 시작 시 | OSV npm/PyPI 수집 → 바뀐 취약점만 다시 매칭 |
 | `sync_exploits` | 매일 06:17, 워커 시작 시 | EPSS, CISA KEV 갱신 |
-| `scan_all_projects` | 매일 03:23 | 모든 프로젝트 재스캔 → 바뀐 컴포넌트만 다시 매칭 |
+| `scan_all_projects` | 매일 03:23 | 모든 프로젝트 재스캔 → 바뀐 컴포넌트만 다시 매칭 → 판별 |
+| `triage_project` | 피드 수집 후 | 새 취약점으로 Finding이 생긴 프로젝트를 다시 clone해 판별 |
 
 - 처음 실행하면 OSV 전체 덤프를 적재합니다. npm은 약 23만 건(219MB)이며 수 분 걸립니다. 이후에는 변경분만 받습니다.
 - 같은 취약점이 여러 DB에 있으면(GHSA, PYSEC 등 별칭) Finding은 하나만 만듭니다.
@@ -66,7 +68,8 @@
 python -m autocve.cli sync-feeds [--ecosystem npm]
 python -m autocve.cli sync-exploits
 python -m autocve.cli add-project NAME https://github.com/owner/repo [--branch main] [--exposure internet]
-python -m autocve.cli scan PROJECT_ID
+python -m autocve.cli scan PROJECT_ID      # 스캔 → 매칭 → 판별
+python -m autocve.cli triage PROJECT_ID    # 판별만 (저장소를 다시 clone)
 python -m autocve.cli findings PROJECT_ID
 python -m autocve.cli rematch
 ```
@@ -98,6 +101,10 @@ autocve/
   credentials/    # 제공자별 키 검증, 키 저장/재검증/삭제 서비스
   inventory/      # 저장소 clone, lockfile 파서, 코드 import 인덱스, 스캔
   matcher/        # OSV 버전 범위 판정(SemVer, PEP 440), 후보 Finding 생성
+  analysis/       # 취약점 프로파일 추출 (Haiku)
+  triage/         # 증거 수집, JEV/규칙 판별, 라우팅 정책, 판별 실행
+  llm/            # Claude 호출 게이트웨이(예산, 사용량), 단가표
+  scoring/        # CVSS v3 점수 계산
   security/       # keyvault.py(AES-256-GCM 암호화), redaction.py(로그 키 마스킹)
   web/            # 템플릿, CSS
   models.py       # DB 스키마 (docs/02-architecture.md §7)

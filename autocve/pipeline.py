@@ -11,10 +11,11 @@ from autocve.collector import exploit, osv
 from autocve.config import Settings
 from autocve.credentials.service import load_secret
 from autocve.ecosystems import SUPPORTED
-from autocve.inventory.scan import scan_project
+from autocve.inventory.scan import checked_out, log_scan, scan_checkout
 from autocve.matcher.matcher import MatchResult, match_advisories, match_components
 from autocve.models import Component, Project, Provider, Workspace
 from autocve.security.keyvault import KeyVault
+from autocve.triage.run import TriageSummary, triage_findings
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +32,15 @@ class FeedSyncSummary:
     bootstrapped: list[str] = field(default_factory=list)
     new_findings: int = 0
     resolved_findings: int = 0
+    # 새 Finding이 생겨 판별이 필요한 프로젝트
+    projects_to_triage: list[int] = field(default_factory=list)
 
 
 def _merge(summary: FeedSyncSummary, result: MatchResult) -> None:
     summary.new_findings += len(result.created)
     summary.resolved_findings += len(result.resolved)
+    projects = set(summary.projects_to_triage) | {f.project_id for f in result.created}
+    summary.projects_to_triage = sorted(projects)
 
 
 def sync_feeds(
@@ -82,6 +87,16 @@ class ProjectScanSummary:
     new_findings: int
     resolved_findings: int
     manifest_errors: list[str]
+    triage: dict
+
+
+def _triage_dict(summary: TriageSummary) -> dict:
+    return {**summary.__dict__, "actions": dict(summary.actions)}
+
+
+def _github_token(session: Session, project: Project, vault: KeyVault) -> str | None:
+    workspace = session.get(Workspace, project.workspace_id)
+    return load_secret(session, vault, workspace, Provider.GITHUB)
 
 
 def scan_and_match(
@@ -90,14 +105,30 @@ def scan_and_match(
     vault: KeyVault,
     settings: Settings,
     *,
+    http: httpx.Client | None = None,
     allow_local: bool = False,
+    triage_kwargs: dict | None = None,
 ) -> ProjectScanSummary:
-    workspace = session.get(Workspace, project.workspace_id)
-    token = load_secret(session, vault, workspace, Provider.GITHUB)
-    result = scan_project(
+    """clone → 스캔 → 매칭 → 판별.
+
+    판별은 clone한 코드에서 증거를 모으므로 같은 checkout 안에서 한다.
+    """
+    token = _github_token(session, project, vault)
+    with checked_out(
         session, project, token=token, workdir=settings.scan_workdir, allow_local=allow_local
-    )
-    matched = match_components(session, result.changed_components)
+    ) as (root, commit):
+        result = scan_checkout(session, project, root, commit)
+        log_scan(project, result)
+        matched = match_components(session, result.changed_components)
+        triage = triage_findings(
+            session,
+            project,
+            vault=vault,
+            settings=settings,
+            checkout=root,
+            http=http,
+            **(triage_kwargs or {}),
+        )
     return ProjectScanSummary(
         project_id=project.id,
         commit=result.commit,
@@ -106,4 +137,32 @@ def scan_and_match(
         new_findings=len(matched.created),
         resolved_findings=len(matched.resolved),
         manifest_errors=result.manifest_errors,
+        triage=_triage_dict(triage),
     )
+
+
+def triage_project(
+    session: Session,
+    project: Project,
+    vault: KeyVault,
+    settings: Settings,
+    *,
+    http: httpx.Client | None = None,
+    allow_local: bool = False,
+    triage_kwargs: dict | None = None,
+) -> dict:
+    """피드에서 새 취약점이 들어와 생긴 Finding을 판별한다. 증거 수집을 위해 다시 clone한다."""
+    token = _github_token(session, project, vault)
+    with checked_out(
+        session, project, token=token, workdir=settings.scan_workdir, allow_local=allow_local
+    ) as (root, _):
+        summary = triage_findings(
+            session,
+            project,
+            vault=vault,
+            settings=settings,
+            checkout=root,
+            http=http,
+            **(triage_kwargs or {}),
+        )
+    return _triage_dict(summary)

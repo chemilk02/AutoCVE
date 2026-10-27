@@ -86,6 +86,7 @@ def advisory_row(record: dict) -> dict:
         "severity": record.get("severity", []),
         "affected": record.get("affected", []),
         "references": record.get("references", []),
+        "database_specific": record.get("database_specific") or {},
     }
 
 
