@@ -75,6 +75,9 @@ flowchart LR
   - 취약점이 새로 들어오거나 수정되면 `(ecosystem, name)` 인덱스로 영향받는 컴포넌트를 찾는다.
   - 인벤토리가 바뀌면 바뀐 컴포넌트만 로컬 취약점 DB와 대조한다.
 - 결과는 `Finding(status=new)`로 저장한다.
+- 같은 취약점이 여러 DB에 실려 있으면(GHSA, PYSEC 등 `aliases`로 연결) 하나만 남긴다. 우선순위는 GHSA > CVE > PYSEC이다.
+- 컴포넌트는 lockfile 안의 설치 위치(`locator`) 단위로 유지한다. 버전이 바뀌면 같은 행을 갱신하고 기존 Finding을 다시 평가한다. 더 이상 영향 범위가 아니면 `resolved`로 바꾼다.
+- OSV npm 피드에는 악성 패키지 항목(`MAL-…`)도 들어 있다. 이것도 Finding으로 만든다.
 
 ## 4. 판별 게이트 (JEV)
 

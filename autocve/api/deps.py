@@ -6,6 +6,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, sessionmaker
 
+from autocve.api.jobs import JobQueue
 from autocve.config import Settings
 from autocve.credentials.validators import Validator
 from autocve.models import Provider
@@ -20,6 +21,7 @@ class AppState:
     session_factory: sessionmaker[Session]
     vault: KeyVault
     validators: dict[Provider, Validator]
+    queue: JobQueue
 
 
 def get_state(request: Request) -> AppState:

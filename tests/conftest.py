@@ -1,26 +1,12 @@
-from dataclasses import dataclass, field
-
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
 from autocve.api.app import create_app
 from autocve.config import Settings
-from autocve.credentials.validators import ValidationResult
-from autocve.models import Base, CredentialStatus, Provider
+from autocve.models import Base, Provider
 from autocve.security.keyvault import generate_master_key
-
-
-@dataclass
-class FakeValidator:
-    """제공자별로 돌려줄 결과를 바꿀 수 있고, 받은 키를 기록한다."""
-
-    status: CredentialStatus = CredentialStatus.VALID
-    seen: list[str] = field(default_factory=list)
-
-    def __call__(self, key: str) -> ValidationResult:
-        self.seen.append(key)
-        return ValidationResult(self.status, f"fake {self.status}")
+from tests.fakes import FakeQueue, FakeValidator
 
 
 @pytest.fixture
@@ -38,6 +24,20 @@ def validators() -> dict[Provider, FakeValidator]:
 
 
 @pytest.fixture
-def client(settings, validators):
-    with TestClient(create_app(settings, validators)) as c:
+def queue() -> FakeQueue:
+    return FakeQueue()
+
+
+@pytest.fixture
+def session_factory(settings):
+    from autocve.db import make_engine, make_session_factory
+
+    engine = make_engine(settings.database_url)
+    yield make_session_factory(engine)
+    engine.dispose()
+
+
+@pytest.fixture
+def client(settings, validators, queue):
+    with TestClient(create_app(settings, validators, queue)) as c:
         yield c

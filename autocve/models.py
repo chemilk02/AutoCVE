@@ -36,6 +36,7 @@ class Provider(StrEnum):
     ANTHROPIC = "anthropic"
     TYPESAFE = "typesafe"
     OPENROUTER = "openrouter"
+    GITHUB = "github"  # 비공개 저장소 clone용 PAT
 
 
 JEV_PROVIDERS = (Provider.TYPESAFE, Provider.OPENROUTER)
@@ -129,18 +130,27 @@ class Project(Base):
     exposure: Mapped[str] = mapped_column(String(16), default="internet")
     scan_schedule: Mapped[str] = mapped_column(String(32), default="daily")
     last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_commit: Mapped[str | None] = mapped_column(String(64))
+    last_scan_error: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = created_at_column()
 
 
 class Component(Base):
+    """lockfile 안의 설치 위치(locator) 단위로 유지한다.
+
+    버전이 바뀌어도 같은 행을 갱신하므로, 업그레이드로 해소된 Finding을 추적할 수 있다.
+    """
+
     __tablename__ = "components"
     __table_args__ = (
-        UniqueConstraint("project_id", "purl", "manifest_path"),
+        UniqueConstraint("project_id", "manifest_path", "locator"),
         Index("ix_components_ecosystem_name", "ecosystem", "name"),
     )
 
     id: Mapped[int] = mapped_column(IdType, primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    # npm: package-lock의 경로 키(node_modules/a/node_modules/b), Python: 정규화된 패키지 이름
+    locator: Mapped[str] = mapped_column(String(1000))
     purl: Mapped[str] = mapped_column(String(512))
     ecosystem: Mapped[str] = mapped_column(String(32))
     name: Mapped[str] = mapped_column(String(255))
@@ -188,6 +198,18 @@ class AdvisoryPackage(Base):
     )
     ecosystem: Mapped[str] = mapped_column(String(32), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), primary_key=True)
+
+
+class FeedCursor(Base):
+    """피드별 마지막 수집 위치. OSV는 생태계마다 modified 타임스탬프를 저장한다."""
+
+    __tablename__ = "feed_cursors"
+
+    source: Mapped[str] = mapped_column(String(64), primary_key=True)  # 예: osv:npm, epss, kev
+    cursor: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class ExploitSignal(Base):
