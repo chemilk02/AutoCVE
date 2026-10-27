@@ -20,6 +20,7 @@ from autocve.config import get_settings
 from autocve.credentials.service import get_or_create_default_workspace
 from autocve.db import make_engine, make_session_factory
 from autocve.ecosystems import SUPPORTED
+from autocve.envsync import apply_env_settings
 from autocve.evaluation import calibrate, dataset, experiment, metrics, report
 from autocve.evaluation.experiment import STRATEGIES
 from autocve.inventory.repo import RepoError, validate_repo_url
@@ -72,6 +73,9 @@ def main(argv: list[str] | None = None) -> int:
     factory = make_session_factory(make_engine(settings.database_url))
 
     with factory() as session:
+        apply_env_settings(
+            session, KeyVault.from_b64(settings.master_key.get_secret_value()), settings
+        )
         if args.command == "sync-feeds":
             with pipeline.http_client() as http:
                 summary = pipeline.sync_feeds(

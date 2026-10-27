@@ -15,6 +15,7 @@ from sqlalchemy import select
 from autocve import pipeline
 from autocve.config import get_settings
 from autocve.db import make_engine, make_session_factory
+from autocve.envsync import apply_env_settings
 from autocve.inventory.repo import RepoError
 from autocve.models import Project
 from autocve.security.keyvault import KeyVault
@@ -29,6 +30,8 @@ async def startup(ctx: dict) -> None:
     ctx["settings"] = settings
     ctx["session_factory"] = make_session_factory(make_engine(settings.database_url))
     ctx["vault"] = KeyVault.from_b64(settings.master_key.get_secret_value())
+    with ctx["session_factory"]() as session:
+        apply_env_settings(session, ctx["vault"], settings)
 
 
 def _sync_feeds(ctx: dict) -> dict:

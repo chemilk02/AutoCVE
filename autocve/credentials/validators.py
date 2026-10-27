@@ -133,6 +133,23 @@ def validate_slack_webhook(url: str) -> ValidationResult:
     return ValidationResult(CredentialStatus.VALID, "형식 확인 (테스트 전송으로 확인하세요)")
 
 
+_KEY_PREFIXES = {
+    Provider.ANTHROPIC: "sk-ant-",
+    Provider.OPENROUTER: "sk-or-",
+    Provider.SLACK: "https://hooks.slack.com/",
+}
+
+
+def check_format(provider: Provider, key: str) -> ValidationResult:
+    """네트워크 없이 형식만 본다. .env에서 불러온 키처럼 시작 시점에 확인할 때 쓴다."""
+    prefix = _KEY_PREFIXES.get(provider)
+    if prefix and not key.startswith(prefix):
+        return ValidationResult(CredentialStatus.INVALID, f"{prefix} 형식이 아닙니다")
+    return ValidationResult(
+        CredentialStatus.UNVERIFIED, ".env에서 불러왔습니다. 재검증으로 확인하세요"
+    )
+
+
 def default_validators(settings: Settings) -> dict[Provider, Validator]:
     return {
         Provider.ANTHROPIC: validate_anthropic,

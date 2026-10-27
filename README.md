@@ -21,35 +21,83 @@
 
 - M4(알림·UI) 완료: Slack/이메일 즉시 알림과 일일 요약, Finding 상세와 처리(수용·해당 없음·수정 완료), 사용량 대시보드
 - M5(평가) 완료: 성공 지표 리포트, 정답 셋(사용자 처리 기록·JSON), 정확도·놓친 비율, 자동 종결 임계값 보정, 캐스케이드 vs Opus 단일 비교 실험
+- 실행·배포: `.env`로 모든 설정 관리(키·알림·예산은 화면에서 잠금), `run.sh` 실행, `build.sh` 배포 번들
 
-## 실행 (Docker Compose)
+## 실행
 
-1. 마스터 키를 만들어 `.env`에 넣습니다. 이 키로 API 키를 암호화하므로 잃어버리면 저장된 키를 복호화할 수 없습니다.
+Docker와 Docker Compose 플러그인이 필요합니다. 설정은 모두 `.env`에서 읽습니다 ([.env.example](.env.example)에 전체 항목과 설명이 있습니다).
 
-   ```bash
-   cp .env.example .env
-   python3 -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())"
-   # 출력값을 .env의 AUTOCVE_MASTER_KEY= 뒤에 붙여 넣습니다.
-   ```
+```bash
+./run.sh up
+```
 
-2. 필요하면 `.env`의 `AUTOCVE_ADMIN_PASSWORD`를 설정합니다. 설정하면 웹 UI에 HTTP Basic 인증(사용자 이름 `admin`)이 걸립니다.
+처음 실행하면 다음을 처리합니다.
 
-3. 실행합니다. 앱 컨테이너가 시작할 때 DB 마이그레이션을 자동으로 적용합니다.
+1. `.env.example`을 `.env`로 복사합니다 (권한 600).
+2. 마스터 키(`AUTOCVE_MASTER_KEY`)와 DB 비밀번호를 만들어 넣습니다. 마스터 키로 API 키를 암호화하므로, 잃어버리면 저장된 키를 복호화할 수 없습니다. **`.env`를 안전한 곳에 백업하세요.**
+3. 이미지를 빌드하고 컨테이너를 띄웁니다. 앱이 시작할 때 DB 마이그레이션을 자동으로 적용합니다.
+4. 앱이 정상 상태가 될 때까지 기다린 뒤 주소를 알려줍니다 (기본 http://127.0.0.1:8000).
 
-   ```bash
-   docker compose up -d --build
-   ```
+| 명령 | 내용 |
+|------|------|
+| `./run.sh up` | `.env` 준비 → 빌드 → 실행 → 상태 확인 |
+| `./run.sh down` | 중지 (데이터 유지) |
+| `./run.sh restart` | `.env`를 바꾼 뒤 새 설정으로 앱·워커 재시작 |
+| `./run.sh logs [app\|worker]` | 로그 |
+| `./run.sh status` | 컨테이너 상태 |
+| `./run.sh cli <명령>` | 운영 CLI (아래 [수집과 스캔](#수집과-스캔)) |
+| `./run.sh backup` | DB를 `backups/`에 덤프 |
+| `./run.sh dev` | Docker 없이 로컬 실행 (PostgreSQL, Redis, `.venv` 필요) |
 
-4. http://127.0.0.1:8000 에 접속해 API 키를 등록합니다.
+### 설정 (.env)
+
+| 항목 | 변수 | 비워 두면 |
+|------|------|-----------|
+| 웹 UI 비밀번호 (HTTP Basic, 사용자 `admin`) | `AUTOCVE_ADMIN_PASSWORD` | 인증 없음 |
+| 접속 주소·포트 | `AUTOCVE_BIND`, `AUTOCVE_PORT` | `127.0.0.1:8000` (같은 PC에서만) |
+| Anthropic 키 (필수) | `AUTOCVE_ANTHROPIC_API_KEY` | 웹 화면에서 입력 |
+| JEV 제공자 | `AUTOCVE_JEV_PROVIDER` (`none`/`typesafe`/`openrouter`) | 웹 화면에서 선택 |
+| JEV 키 | `AUTOCVE_TYPESAFE_API_KEY`, `AUTOCVE_OPENROUTER_API_KEY` | 웹 화면에서 입력 |
+| GitHub 토큰 (비공개 저장소) | `AUTOCVE_GITHUB_TOKEN` | 웹 화면에서 입력 |
+| 월 예산 (USD) | `AUTOCVE_MONTHLY_BUDGET_USD` | 웹 화면에서 설정 |
+| 알림 기준·일일 요약 | `AUTOCVE_NOTIFY_IMMEDIATE_GRADE`, `AUTOCVE_NOTIFY_DIGEST` | 웹 화면에서 설정 |
+| Slack Webhook | `AUTOCVE_SLACK_WEBHOOK_URL` | 웹 화면에서 입력 |
+| 이메일 받는 사람·SMTP | `AUTOCVE_NOTIFY_EMAIL_TO`, `AUTOCVE_SMTP_*` | 이메일 안 보냄 |
+| 알림 속 링크 주소 | `AUTOCVE_PUBLIC_URL` | `http://127.0.0.1:8000` |
+
+- API 키, JEV 제공자, 예산, 알림 항목은 시작할 때 DB에 반영됩니다. 그 항목은 웹 화면에서 잠기고 "`.env`로 관리" 표시가 나옵니다.
+- `.env`의 키는 형식만 확인하고 "검증 못 함" 상태로 저장합니다. 웹 화면의 **재검증**으로 실제 호출을 확인할 수 있습니다. 값이 그대로면 다시 저장하지 않으므로 재검증 결과가 유지됩니다.
+- `.env`에서 키를 지우고 다시 시작하면 그 키는 DB에서도 지워집니다. 웹 화면에서 입력한 키는 건드리지 않습니다.
+- 외부에 열 때는 `AUTOCVE_BIND=0.0.0.0`과 `AUTOCVE_ADMIN_PASSWORD`를 함께 설정하고, HTTPS 리버스 프록시(Caddy, nginx 등) 뒤에 두세요.
+
+### 사용
+
+1. **설정 > API 키**에서 키를 확인하거나 입력합니다 (`.env`에 넣었다면 생략).
    - **Anthropic** (필수): `GET /v1/models`로 검증합니다. 토큰을 쓰지 않습니다.
    - **JEV** (선택): TypeSafe 키 또는 OpenRouter 키 중 하나를 넣고, 사용할 제공자를 고릅니다. OpenRouter는 키 정보 조회로 검증하고, TypeSafe는 최소 판별 요청 1회로 검증합니다.
-
    - **GitHub** (선택): 비공개 저장소를 clone할 때만 씁니다. github.com 저장소에만 전송합니다.
 
    거부된 키는 저장하지 않습니다. 네트워크 문제로 검증하지 못한 키는 "검증 못 함" 상태로 저장되며, 나중에 재검증할 수 있습니다.
+2. **프로젝트**에서 저장소(https URL)를 등록하면 바로 스캔하고 후보 취약점을 위험도 순으로 보여줍니다.
+3. **알림**에서 Slack Webhook이나 이메일 받는 사람을 등록합니다 (`.env`에 넣었다면 생략).
 
-5. **프로젝트**에서 저장소(https URL)를 등록하면 바로 스캔하고 후보 취약점을 위험도 순으로 보여줍니다.
-6. **알림**에서 Slack Incoming Webhook이나 이메일 받는 사람을 등록합니다. 이메일은 SMTP 환경변수(`AUTOCVE_SMTP_HOST`, `AUTOCVE_SMTP_PORT`, `AUTOCVE_SMTP_USERNAME`, `AUTOCVE_SMTP_PASSWORD`, `AUTOCVE_SMTP_FROM`)가 있어야 보냅니다. 알림 속 링크 주소는 `AUTOCVE_PUBLIC_URL`로 정합니다.
+### 배포 번들
+
+```bash
+./build.sh               # ruff, pytest → 이미지 빌드 → dist/autocve-<버전>.tar.gz
+./build.sh --skip-tests  # 검사 생략
+./build.sh --offline     # postgres, redis 이미지도 포함 (인터넷 없는 서버용)
+./build.sh --image-only  # 이미지만 빌드
+```
+
+번들에는 이미지 파일, 이미지 기반 `docker-compose.yml`, `.env.example`, `run.sh`, 설치 안내가 들어 있습니다. 서버에는 Docker만 있으면 되고 소스는 필요 없습니다.
+
+```bash
+scp dist/autocve-<버전>.tar.gz server:
+ssh server 'tar xzf autocve-<버전>.tar.gz && cd autocve-<버전> && ./run.sh up'
+```
+
+업그레이드할 때는 새 번들을 풀고 이전 폴더의 `.env`를 복사한 뒤 `./run.sh up`을 실행합니다. Compose 프로젝트 이름이 `autocve`로 고정되어 있어 같은 DB 볼륨을 그대로 씁니다.
 
 ## 수집과 스캔
 
@@ -71,7 +119,7 @@ High 이상(설정으로 Critical만 가능)은 스캔·판별·분석·EPSS/KEV
 - 업그레이드로 영향 범위를 벗어나면 미처리 Finding은 `resolved`가 됩니다.
 - clone한 코드는 스캔이 끝나면 지우고, import 목록과 파일 해시만 남깁니다.
 
-워커를 기다리지 않고 직접 돌릴 때는 CLI를 씁니다.
+워커를 기다리지 않고 직접 돌릴 때는 CLI를 씁니다. Docker로 실행 중이면 `python -m autocve.cli` 대신 `./run.sh cli`를 씁니다.
 
 ```bash
 python -m autocve.cli sync-feeds [--ecosystem npm]
@@ -95,12 +143,13 @@ pytest
 ruff check . && ruff format --check .
 ```
 
-로컬 PostgreSQL에 마이그레이션 적용:
+로컬에서 실행 (`.env`의 `AUTOCVE_DATABASE_URL`, `AUTOCVE_REDIS_URL`을 씁니다. 마이그레이션 → 워커 → 웹 순서로 띄웁니다):
 
 ```bash
-export AUTOCVE_DATABASE_URL=postgresql+psycopg://autocve:autocve@localhost:5432/autocve
-alembic upgrade head
+./run.sh dev
 ```
+
+테스트는 `.env`와 `AUTOCVE_*` 환경변수를 읽지 않습니다.
 
 모델을 바꾼 뒤에는 `alembic revision --autogenerate -m "<설명>"`으로 마이그레이션을 만듭니다.
 
@@ -127,6 +176,9 @@ autocve/
   pipeline.py     # 수집 → 매칭, 스캔 → 매칭 작업 단위
   worker.py       # arq 워커 (cron 일정)
   cli.py          # 운영용 CLI
+  envsync.py      # .env 설정을 DB에 반영 (시작 시)
 migrations/       # Alembic
+run.sh            # 실행 (up/down/restart/logs/cli/backup/dev)
+build.sh          # 배포 번들 생성
 tests/
 ```

@@ -9,6 +9,22 @@ from autocve.security.keyvault import generate_master_key
 from tests.fakes import FakeQueue, FakeValidator
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_env(monkeypatch):
+    """개발자의 .env나 셸 환경변수가 테스트에 섞이지 않게 한다."""
+    import os
+
+    from autocve.config import get_settings
+
+    for name in list(os.environ):
+        if name.startswith("AUTOCVE_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     url = f"sqlite:///{tmp_path / 'test.db'}"
