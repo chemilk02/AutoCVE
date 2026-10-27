@@ -56,6 +56,8 @@ def save_credential(
     provider: Provider,
     secret: str,
     validator: Validator,
+    *,
+    source: str = "ui",
 ) -> ValidationResult:
     """키를 검증하고, 거부되지 않았으면 암호화해서 저장한다.
 
@@ -76,6 +78,7 @@ def save_credential(
     credential.ciphertext = vault.encrypt(secret, context=_context(workspace.id, provider))
     credential.key_id = vault.key_id
     credential.last4 = secret[-4:]
+    credential.source = source
     _apply_result(credential, result)
 
     # JEV 키를 처음 저장하면 그 제공자를 바로 사용하도록 한다.

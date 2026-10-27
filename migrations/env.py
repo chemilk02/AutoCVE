@@ -2,6 +2,7 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
+from dotenv import dotenv_values
 from sqlalchemy import engine_from_config, pool
 
 from autocve.config import Settings
@@ -12,7 +13,12 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # 마이그레이션에는 마스터 키가 필요 없으므로 Settings 전체를 읽지 않고 DB URL만 가져온다.
-database_url = os.environ.get("AUTOCVE_DATABASE_URL", Settings.model_fields["database_url"].default)
+# 환경변수 → .env → 기본값 순서로 찾는다.
+database_url = (
+    os.environ.get("AUTOCVE_DATABASE_URL")
+    or dotenv_values(".env").get("AUTOCVE_DATABASE_URL")
+    or Settings.model_fields["database_url"].default
+)
 config.set_main_option("sqlalchemy.url", database_url)
 target_metadata = Base.metadata
 

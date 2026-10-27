@@ -9,33 +9,39 @@
 <form method="post" action="/settings/notifications" class="card stack">
   <h2>알림 기준</h2>
   <label for="immediate_grade">즉시 알림</label>
-  <select id="immediate_grade" name="immediate_grade">
+  {% if locks.notify_grade %}<p class="env-note small">.env의 <code>AUTOCVE_NOTIFY_IMMEDIATE_GRADE</code>로 관리합니다.</p>{% endif %}
+  <select id="immediate_grade" name="immediate_grade" {{ "disabled" if locks.notify_grade }}>
     {% for value, label in grades.items() %}
       <option value="{{ value }}" {{ "selected" if config.get("immediate_grade", "high") == value }}>{{ label }}</option>
     {% endfor %}
   </select>
-  <label class="check"><input type="checkbox" name="digest" {{ "checked" if config.get("digest", true) }}> 일일 요약 보내기 (매일 00:07 UTC)</label>
+  <label class="check"><input type="checkbox" name="digest" {{ "checked" if config.get("digest", true) }} {{ "disabled" if locks.notify_digest }}> 일일 요약 보내기 (매일 00:07 UTC){% if locks.notify_digest %} <span class="muted small">- .env의 AUTOCVE_NOTIFY_DIGEST</span>{% endif %}</label>
 
   <h2>Slack</h2>
   {% if slack %}
     <p class="small">Webhook 등록됨 <code>••••{{ slack.last4 }}</code></p>
   {% endif %}
+  {% if "slack" in locks.providers %}
+    <p class="env-note small">.env의 <code>AUTOCVE_SLACK_WEBHOOK_URL</code>로 관리합니다.</p>
+  {% else %}
   <label for="slack_webhook">{{ "Webhook 주소 교체" if slack else "Incoming Webhook 주소" }}</label>
   <input id="slack_webhook" name="slack_webhook" type="password" autocomplete="off" placeholder="https://hooks.slack.com/services/...">
+  {% endif %}
 
   <h2>이메일</h2>
   {% if not smtp_ready %}
     <p class="small text-error">SMTP가 설정되지 않아 이메일은 보내지 않습니다. 환경변수 AUTOCVE_SMTP_HOST, AUTOCVE_SMTP_FROM 등을 설정하세요.</p>
   {% endif %}
   <label for="email_to">받는 사람 (쉼표로 구분)</label>
-  <input id="email_to" name="email_to" value="{{ (config.get('email_to') or []) | join(', ') }}" placeholder="security@example.com">
+  {% if locks.notify_email %}<p class="env-note small">.env의 <code>AUTOCVE_NOTIFY_EMAIL_TO</code>로 관리합니다.</p>{% endif %}
+  <input id="email_to" name="email_to" value="{{ (config.get('email_to') or []) | join(', ') }}" placeholder="security@example.com" {{ "disabled" if locks.notify_email }}>
   <div><button type="submit">저장</button></div>
 </form>
 
 <section class="card">
   <div class="row actions">
     <form method="post" action="/settings/notifications/test"><button type="submit" class="secondary">테스트 알림 보내기</button></form>
-    {% if slack %}
+    {% if slack and "slack" not in locks.providers %}
       <form method="post" action="/settings/notifications/slack/delete" onsubmit="return confirm('Slack Webhook을 삭제할까요?')">
         <button type="submit" class="danger">Slack Webhook 삭제</button>
       </form>

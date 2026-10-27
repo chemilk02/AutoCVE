@@ -9,6 +9,7 @@ from autocve.api.deps import AppState, get_session, get_state, templates
 from autocve.credentials import service
 from autocve.credentials.service import CredentialError
 from autocve.credentials.validators import ValidationResult
+from autocve.envsync import env_locks
 from autocve.llm.gateway import budget_status
 from autocve.models import JEV_PROVIDERS, CredentialStatus, JevProvider, Provider
 
@@ -41,6 +42,7 @@ def _render(
         "settings_keys.html",
         {
             "workspace": workspace,
+            "locks": env_locks(get_state(request).settings),
             "budget": budget_status(session, workspace),
             "credentials": credentials,
             "labels": PROVIDER_LABELS,
@@ -49,6 +51,11 @@ def _render(
         },
         status_code=status_code,
     )
+
+
+def _locked(request: Request, session: Session, what: str, env_name: str) -> HTMLResponse:
+    message = f"{what}은(는) .env의 {env_name}로 관리합니다. .env를 고친 뒤 다시 시작하세요"
+    return _render(request, session, ("error", message), status_code=409)
 
 
 def _notice(provider: Provider, action: str, result: ValidationResult) -> tuple[str, str]:
@@ -69,6 +76,9 @@ def save_key(
     session: Annotated[Session, Depends(get_session)],
     state: Annotated[AppState, Depends(get_state)],
 ):
+    locks = env_locks(state.settings)
+    if provider in locks.providers:
+        return _locked(request, session, PROVIDER_LABELS[provider], locks.env_name(provider))
     workspace = service.get_or_create_default_workspace(session)
     try:
         result = service.save_credential(
@@ -103,7 +113,11 @@ def delete_key(
     request: Request,
     provider: Provider,
     session: Annotated[Session, Depends(get_session)],
+    state: Annotated[AppState, Depends(get_state)],
 ):
+    locks = env_locks(state.settings)
+    if provider in locks.providers:
+        return _locked(request, session, PROVIDER_LABELS[provider], locks.env_name(provider))
     workspace = service.get_or_create_default_workspace(session)
     service.delete_credential(session, workspace, provider)
     return _render(request, session, ("success", f"{PROVIDER_LABELS[provider]} 키를 삭제했습니다"))
@@ -114,7 +128,10 @@ def choose_jev_provider(
     request: Request,
     provider: Annotated[JevProvider, Form()],
     session: Annotated[Session, Depends(get_session)],
+    state: Annotated[AppState, Depends(get_state)],
 ):
+    if env_locks(state.settings).jev_provider:
+        return _locked(request, session, "JEV 제공자", "AUTOCVE_JEV_PROVIDER")
     workspace = service.get_or_create_default_workspace(session)
     try:
         service.set_jev_provider(session, workspace, provider)
@@ -127,8 +144,11 @@ def choose_jev_provider(
 def update_budget(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
+    state: Annotated[AppState, Depends(get_state)],
     monthly_budget_usd: Annotated[str, Form()] = "",
 ):
+    if env_locks(state.settings).budget:
+        return _locked(request, session, "월 예산", "AUTOCVE_MONTHLY_BUDGET_USD")
     workspace = service.get_or_create_default_workspace(session)
     value = monthly_budget_usd.strip()
     if not value:

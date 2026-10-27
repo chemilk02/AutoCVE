@@ -1,9 +1,15 @@
+# 설정은 모두 .env에서 읽는다 (.env.example 참고). 실행은 ./run.sh up
+# 프로젝트 이름을 고정해서 배포 번들 폴더 이름이 바뀌어도 같은 DB 볼륨을 쓴다.
+name: autocve
+
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: autocve
-      POSTGRES_PASSWORD: autocve
+      # DB를 처음 만들 때만 적용된다. 나중에 바꾸려면 DB 안에서 비밀번호도 바꿔야 한다.
+      POSTGRES_PASSWORD: ${AUTOCVE_DB_PASSWORD:-autocve}
       POSTGRES_DB: autocve
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -15,6 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -23,15 +30,22 @@ services:
 
   app:
     build: .
-    image: autocve:local
+    image: ${AUTOCVE_IMAGE:-autocve:local}
+    restart: unless-stopped
     env_file: .env
     environment: &app-env
       AUTOCVE_MASTER_KEY: ${AUTOCVE_MASTER_KEY:?.env에 AUTOCVE_MASTER_KEY를 설정하세요}
-      AUTOCVE_DATABASE_URL: postgresql+psycopg://autocve:autocve@db:5432/autocve
+      AUTOCVE_DATABASE_URL: postgresql+psycopg://autocve:${AUTOCVE_DB_PASSWORD:-autocve}@db:5432/autocve
       AUTOCVE_REDIS_URL: redis://redis:6379/0
     ports:
-      # 같은 PC에서만 접속하도록 localhost에만 연다.
-      - "127.0.0.1:8000:8000"
+      # 기본값은 같은 PC에서만 접속하도록 localhost에만 연다.
+      - "${AUTOCVE_BIND:-127.0.0.1}:${AUTOCVE_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
     depends_on:
       db:
         condition: service_healthy
@@ -39,13 +53,15 @@ services:
         condition: service_healthy
 
   worker:
-    image: autocve:local
+    image: ${AUTOCVE_IMAGE:-autocve:local}
+    restart: unless-stopped
     env_file: .env
     environment: *app-env
     command: ["arq", "autocve.worker.WorkerSettings"]
     depends_on:
+      # 앱이 마이그레이션을 마친 뒤에 시작한다.
       app:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_healthy
 

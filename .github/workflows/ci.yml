@@ -44,11 +44,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -t autocve:ci .
+      - name: Build image and deploy bundle
+        # 검사는 test 작업에서 돌린다.
+        run: ./build.sh --skip-tests
       - name: Image has git and the app imports
         # 워커 모듈은 import 시점에 설정을 읽으므로 테스트용 마스터 키를 넘긴다.
         run: >-
           docker run --rm -e AUTOCVE_MASTER_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-          --entrypoint sh autocve:ci
+          --entrypoint sh autocve:latest
           -c "git --version && python -c 'import autocve.cli, autocve.worker'"
+      - name: Bundle starts from a clean directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/deploy"
+          tar -C "$RUNNER_TEMP/deploy" -xzf dist/autocve-*.tar.gz
+          cd "$RUNNER_TEMP"/deploy/autocve-*/
+          test ! -e Dockerfile
+          # 번들의 이미지 파일에서 적재하는지 확인한다.
+          docker rmi autocve:latest "$(cat IMAGE)"
+          ./run.sh up
+          test "$(stat -c %a .env)" = 600
+          curl -fsS http://127.0.0.1:8000/healthz
+          ./run.sh cli --help > /dev/null
+          ./run.sh status
+          ./run.sh down

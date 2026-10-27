@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from autocve.api.deps import AppState, get_session, get_state, templates
 from autocve.credentials import service
 from autocve.credentials.service import CredentialError
+from autocve.envsync import env_locks
 from autocve.models import CredentialStatus, NotificationLog, Provider
 from autocve.notify.service import send_test
 
@@ -41,6 +42,7 @@ def _render(
             "slack": service.get_credential(session, workspace, Provider.SLACK),
             "smtp_ready": bool(state.settings.smtp_host and state.settings.smtp_from),
             "grades": IMMEDIATE_GRADES,
+            "locks": env_locks(state.settings),
             "logs": logs,
             "notice": notice,
         },
@@ -68,11 +70,23 @@ def save(
     slack_webhook: Annotated[str, Form()] = "",
 ):
     workspace = service.get_or_create_default_workspace(session)
-    recipients = [e.strip() for e in re.split(r"[,\s;]+", email_to) if e.strip()]
+    locks = env_locks(state.settings)
+    config = dict(workspace.notification_settings or {})
+    # .env로 관리하는 항목은 폼 값을 무시하고 현재 값을 유지한다.
+    if locks.notify_email:
+        recipients = config.get("email_to") or []
+    else:
+        recipients = [e.strip() for e in re.split(r"[,\s;]+", email_to) if e.strip()]
+    if locks.notify_grade:
+        immediate_grade = config.get("immediate_grade", "high")
+    digest_on = config.get("digest", True) if locks.notify_digest else digest == "on"
     bad = [e for e in recipients if not _EMAIL.match(e)]
     if bad or immediate_grade not in IMMEDIATE_GRADES or len(recipients) > 20:
         message = f"이메일 주소를 확인하세요: {', '.join(bad)}" if bad else "입력값을 확인하세요"
         return _render(request, session, state, ("error", message), 400)
+    if slack_webhook.strip() and Provider.SLACK in locks.providers:
+        message = "Slack Webhook은 .env의 AUTOCVE_SLACK_WEBHOOK_URL로 관리합니다"
+        return _render(request, session, state, ("error", message), 409)
     if slack_webhook.strip():
         result = service.save_credential(
             session,
@@ -87,7 +101,7 @@ def save(
     workspace.notification_settings = {
         "immediate_grade": immediate_grade,
         "email_to": recipients,
-        "digest": digest == "on",
+        "digest": digest_on,
     }
     session.commit()
     return _render(request, session, state, ("success", "알림 설정을 저장했습니다"))
@@ -99,6 +113,9 @@ def delete_slack(
     session: Annotated[Session, Depends(get_session)],
     state: Annotated[AppState, Depends(get_state)],
 ):
+    if Provider.SLACK in env_locks(state.settings).providers:
+        message = "Slack Webhook은 .env의 AUTOCVE_SLACK_WEBHOOK_URL로 관리합니다"
+        return _render(request, session, state, ("error", message), 409)
     workspace = service.get_or_create_default_workspace(session)
     service.delete_credential(session, workspace, Provider.SLACK)
     return _render(request, session, state, ("success", "Slack Webhook을 삭제했습니다"))

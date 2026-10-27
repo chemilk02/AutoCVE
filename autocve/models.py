@@ -109,6 +109,8 @@ class ApiCredential(Base):
     ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
     key_id: Mapped[str] = mapped_column(String(16))  # 마스터 키 교체 시 구분용
     last4: Mapped[str] = mapped_column(String(4))
+    # ui: 웹 화면에서 입력, env: .env에서 불러옴 (.env에서 지우면 함께 지운다)
+    source: Mapped[str] = mapped_column(String(8), default="ui")
     status: Mapped[str] = mapped_column(String(16))
     status_message: Mapped[str | None] = mapped_column(String(255))
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

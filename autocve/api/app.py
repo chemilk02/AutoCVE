@@ -22,6 +22,7 @@ from autocve.config import Settings, get_settings
 from autocve.credentials.service import get_or_create_default_workspace
 from autocve.credentials.validators import Validator, default_validators
 from autocve.db import make_engine, make_session_factory
+from autocve.envsync import apply_env_settings
 from autocve.models import Provider
 from autocve.notify.service import channels_for
 from autocve.security.keyvault import KeyVault
@@ -56,6 +57,7 @@ def create_app(
         install_log_redaction()
         with state.session_factory() as session:
             get_or_create_default_workspace(session)
+            apply_env_settings(session, state.vault, settings)
         yield
         await state.queue.close()
         engine.dispose()
