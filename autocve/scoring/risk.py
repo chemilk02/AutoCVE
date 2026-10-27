@@ -70,8 +70,14 @@ def compute(inp: RiskInput) -> tuple[float, str, dict]:
     return score, grade_for(score), factors
 
 
-def score_findings(session: Session, finding_ids: list[int] | None = None, project_id=None) -> int:
-    """Finding의 위험도를 다시 계산한다. 해소·기각된 것은 건너뛴다."""
+def score_findings(
+    session: Session,
+    finding_ids: list[int] | None = None,
+    project_id: int | None = None,
+    *,
+    include_closed: bool = False,
+) -> int:
+    """Finding의 위험도를 다시 계산한다. 해소·기각된 것은 `include_closed`일 때만 계산한다."""
     from autocve.triage.run import exploit_signals  # 순환 import 방지
 
     query = (
@@ -79,8 +85,11 @@ def score_findings(session: Session, finding_ids: list[int] | None = None, proje
         .join(Component, Component.id == Finding.component_id)
         .join(Advisory, Advisory.id == Finding.advisory_id)
         .join(Project, Project.id == Finding.project_id)
-        .where(Finding.status.not_in([FindingStatus.RESOLVED, FindingStatus.DISMISSED]))
     )
+    if not include_closed:
+        query = query.where(
+            Finding.status.not_in([FindingStatus.RESOLVED, FindingStatus.DISMISSED])
+        )
     if finding_ids is not None:
         query = query.where(Finding.id.in_(finding_ids))
     if project_id is not None:

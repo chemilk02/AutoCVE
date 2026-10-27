@@ -43,16 +43,25 @@ def _triage(ctx: dict, project_id: int) -> dict:
         if project is None:
             return {"error": "프로젝트가 없습니다"}
         try:
-            return pipeline.triage_project(
+            result = pipeline.triage_project(
                 session, project, ctx["vault"], ctx["settings"], http=http
             )
         except RepoError as e:
             return {"error": str(e)}
+        result["notified"] = _notify(ctx, session)
+        return result
+
+
+def _notify(ctx: dict, session, *, digest: bool = False) -> dict:
+    return pipeline.notify_all(session, ctx["vault"], ctx["settings"], digest=digest)
 
 
 def _sync_exploits(ctx: dict) -> dict:
     with ctx["session_factory"]() as session, pipeline.http_client() as http:
-        return pipeline.sync_exploit_signals(session, http, ctx["settings"])
+        result = pipeline.sync_exploit_signals(session, http, ctx["settings"])
+        # KEV 등재 등으로 등급이 올라간 Finding을 바로 알린다.
+        result["notified"] = _notify(ctx, session)
+        return result
 
 
 def _scan(ctx: dict, project_id: int) -> dict:
@@ -61,11 +70,13 @@ def _scan(ctx: dict, project_id: int) -> dict:
         if project is None:
             return {"error": "프로젝트가 없습니다"}
         try:
-            return pipeline.scan_and_match(
+            result = pipeline.scan_and_match(
                 session, project, ctx["vault"], ctx["settings"], http=http
             ).__dict__
         except RepoError as e:
             return {"error": str(e)}
+        result["notified"] = _notify(ctx, session)
+        return result
 
 
 async def _exclusive(ctx: dict, name: str, func) -> dict:
@@ -102,7 +113,19 @@ async def triage_project(ctx: dict, project_id: int) -> dict:
 
 def _collect_batches(ctx: dict) -> dict:
     with ctx["session_factory"]() as session:
-        return pipeline.collect_analysis_batches(session, ctx["vault"])
+        results = pipeline.collect_analysis_batches(session, ctx["vault"])
+        if any(r.get("collected") for r in results.values()):
+            _notify(ctx, session)
+        return results
+
+
+def _digest(ctx: dict) -> dict:
+    with ctx["session_factory"]() as session:
+        return _notify(ctx, session, digest=True)
+
+
+async def send_digest(ctx: dict) -> dict:
+    return await asyncio.to_thread(_digest, ctx)
 
 
 async def collect_batches(ctx: dict) -> dict:
@@ -129,6 +152,7 @@ class WorkerSettings:
         scan_project,
         triage_project,
         collect_batches,
+        send_digest,
         scan_all_projects,
     ]
     cron_jobs = [
@@ -136,6 +160,7 @@ class WorkerSettings:
         cron(sync_exploits, hour=6, minute=17, run_at_startup=True),  # 매일 06:17 UTC
         cron(scan_all_projects, hour=3, minute=23),  # 매일 03:23 UTC
         cron(collect_batches, minute={2, 12, 22, 32, 42, 52}),  # 10분마다 배치 결과 확인
+        cron(send_digest, hour=0, minute=7),  # 매일 00:07 UTC 일일 요약
     ]
     on_startup = startup
     # 최초 OSV 적재(npm 수백 MB)는 오래 걸린다.

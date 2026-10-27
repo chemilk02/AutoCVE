@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}알림 · AutoCVE{% endblock %}
+
+{% block content %}
+<h1>알림</h1>
+<p class="muted">위험 등급이 기준 이상이면 바로 알리고, 그 아래(Medium, Low)는 하루 한 번 모아서 보냅니다.
+  영향 없음으로 판정되었거나 직접 닫은 취약점은 알리지 않습니다.</p>
+
+<form method="post" action="/settings/notifications" class="card stack">
+  <h2>알림 기준</h2>
+  <label for="immediate_grade">즉시 알림</label>
+  <select id="immediate_grade" name="immediate_grade">
+    {% for value, label in grades.items() %}
+      <option value="{{ value }}" {{ "selected" if config.get("immediate_grade", "high") == value }}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <label class="check"><input type="checkbox" name="digest" {{ "checked" if config.get("digest", true) }}> 일일 요약 보내기 (매일 00:07 UTC)</label>
+
+  <h2>Slack</h2>
+  {% if slack %}
+    <p class="small">Webhook 등록됨 <code>••••{{ slack.last4 }}</code></p>
+  {% endif %}
+  <label for="slack_webhook">{{ "Webhook 주소 교체" if slack else "Incoming Webhook 주소" }}</label>
+  <input id="slack_webhook" name="slack_webhook" type="password" autocomplete="off" placeholder="https://hooks.slack.com/services/...">
+
+  <h2>이메일</h2>
+  {% if not smtp_ready %}
+    <p class="small text-error">SMTP가 설정되지 않아 이메일은 보내지 않습니다. 환경변수 AUTOCVE_SMTP_HOST, AUTOCVE_SMTP_FROM 등을 설정하세요.</p>
+  {% endif %}
+  <label for="email_to">받는 사람 (쉼표로 구분)</label>
+  <input id="email_to" name="email_to" value="{{ (config.get('email_to') or []) | join(', ') }}" placeholder="security@example.com">
+  <div><button type="submit">저장</button></div>
+</form>
+
+<section class="card">
+  <div class="row actions">
+    <form method="post" action="/settings/notifications/test"><button type="submit" class="secondary">테스트 알림 보내기</button></form>
+    {% if slack %}
+      <form method="post" action="/settings/notifications/slack/delete" onsubmit="return confirm('Slack Webhook을 삭제할까요?')">
+        <button type="submit" class="danger">Slack Webhook 삭제</button>
+      </form>
+    {% endif %}
+  </div>
+  {% if logs %}
+    <h3>최근 전송</h3>
+    <table class="table small">
+      <thead><tr><th>시각</th><th>채널</th><th>종류</th><th>건수</th><th>결과</th></tr></thead>
+      <tbody>
+      {% for log in logs %}
+        <tr><td>{{ log.created_at.strftime("%m-%d %H:%M") }}</td><td>{{ log.channel }}</td><td>{{ log.kind }}</td>
+          <td>{{ log.finding_ids | length }}</td><td>{% if log.ok %}성공{% else %}<span class="text-error">{{ log.error }}</span>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

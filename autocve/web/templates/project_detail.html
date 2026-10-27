@@ -56,7 +56,7 @@
         <tr class="{{ 'closed' if f.finding.status not in open_statuses or (f.triage and f.triage.closed) else '' }}">
           <td>{% if f.grade_label %}<span class="grade grade-{{ f.finding.grade }}">{{ f.grade_label }}</span>
             <div class="muted small">{{ "%.0f" | format(f.finding.risk_score) }}</div>{% endif %}</td>
-          <td><a href="https://osv.dev/vulnerability/{{ f.advisory.id }}" rel="noopener noreferrer" target="_blank" class="id">{{ f.advisory.id }}</a>
+          <td><a href="/findings/{{ f.finding.id }}" class="id">{{ f.advisory.id }}</a>
             <div class="small">{{ f.advisory.summary or "" }}</div></td>
           <td><code>{{ f.component.name }}@{{ f.component.version }}</code>
             <div class="muted small">{{ f.component.manifest_path }} · {{ "직접" if f.component.direct else "간접" }} · {{ f.component.scope }}</div></td>

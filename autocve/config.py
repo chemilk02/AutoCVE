@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     # 저장소 clone 작업 디렉터리. 스캔이 끝나면 지운다.
     scan_workdir: str | None = None
 
+    # 알림에 넣을 웹 UI 주소
+    public_url: str = "http://127.0.0.1:8000"
+    # 이메일 알림 (SMTP). host가 없으면 이메일 알림을 쓰지 않는다.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_from: str | None = None
+    smtp_starttls: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

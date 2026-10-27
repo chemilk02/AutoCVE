@@ -19,6 +19,7 @@ PROVIDER_LABELS = {
     Provider.TYPESAFE: "TypeSafe (JEV 직접)",
     Provider.OPENROUTER: "OpenRouter (JEV 경유)",
     Provider.GITHUB: "GitHub",
+    Provider.SLACK: "Slack Webhook",
 }
 NOTICE_LEVELS = {
     CredentialStatus.VALID: "success",
