@@ -168,6 +168,8 @@ def analyze(
     finding_id: int,
     *,
     max_turns: int = MAX_TURNS,
+    effort: str = "medium",
+    stage: str | None = None,
 ) -> AnalysisOutcome:
     model = MODELS[tier]
     tools = RepoTools(checkout)
@@ -175,7 +177,7 @@ def analyze(
     for turn in range(max_turns):
         try:
             response = gateway.create(
-                stage=tier,
+                stage=stage or tier,
                 finding_id=finding_id,
                 beta=True,
                 betas=[FALLBACK_BETA],
@@ -187,7 +189,7 @@ def analyze(
                 messages=messages,
                 cache_control={"type": "ephemeral"},
                 output_config={
-                    "effort": "medium",
+                    "effort": effort,
                     "format": {"type": "json_schema", "schema": ANALYSIS_SCHEMA},
                 },
             )

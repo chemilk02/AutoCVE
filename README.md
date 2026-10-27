@@ -9,6 +9,7 @@
 
 - [MVP 범위](docs/01-mvp-scope.md)
 - [아키텍처](docs/02-architecture.md)
+- [평가](docs/03-evaluation.md)
 
 ## 상태
 
@@ -19,8 +20,7 @@
 - M3(분석·점수) 완료: Haiku 경량 분석, Sonnet/Opus 도구 기반 심층 분석, 불확실 시 한 단계 상향, 거부 대비 fallback, Batch API, 자동 종결 감사 피드백, 위험도 산정
 
 - M4(알림·UI) 완료: Slack/이메일 즉시 알림과 일일 요약, Finding 상세와 처리(수용·해당 없음·수정 완료), 사용량 대시보드
-
-평가 도구(정답 셋 기반 정확도·비용 측정)는 M5에서 들어갑니다.
+- M5(평가) 완료: 성공 지표 리포트, 정답 셋(사용자 처리 기록·JSON), 정확도·놓친 비율, 자동 종결 임계값 보정, 캐스케이드 vs Opus 단일 비교 실험
 
 ## 실행 (Docker Compose)
 
@@ -81,6 +81,7 @@ python -m autocve.cli scan PROJECT_ID      # 스캔 → 매칭 → 판별
 python -m autocve.cli triage PROJECT_ID    # 판별·분석 (저장소를 다시 clone)
 python -m autocve.cli collect-batches      # Batch API 결과 반영
 python -m autocve.cli notify [--digest]    # 즉시 알림 / 일일 요약
+python -m autocve.cli eval report          # 평가 리포트 (docs/03-evaluation.md)
 python -m autocve.cli findings PROJECT_ID
 python -m autocve.cli rematch
 ```
@@ -121,6 +122,7 @@ autocve/
   web/            # 템플릿, CSS
   feedback.py     # 사용자 처리(수용·해당 없음·수정 완료·다시 열기)
   usage.py        # 사용량 대시보드 통계
+  evaluation/     # 성공 지표, 정답 셋, 정확도, 임계값 보정, 비교 실험
   models.py       # DB 스키마 (docs/02-architecture.md §7)
   pipeline.py     # 수집 → 매칭, 스캔 → 매칭 작업 단위
   worker.py       # arq 워커 (cron 일정)

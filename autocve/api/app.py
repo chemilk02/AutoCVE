@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from autocve.api import (
+    routes_evaluation,
     routes_findings,
     routes_notifications,
     routes_projects,
@@ -69,6 +70,7 @@ def create_app(
     app.include_router(routes_findings.router)
     app.include_router(routes_notifications.router)
     app.include_router(routes_usage.router)
+    app.include_router(routes_evaluation.router)
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
