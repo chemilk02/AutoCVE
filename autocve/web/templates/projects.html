@@ -2,52 +2,74 @@
 {% block title %}프로젝트 · AutoCVE{% endblock %}
 
 {% block content %}
-<h1>프로젝트</h1>
-<p class="muted">등록한 저장소를 매일 스캔하고, 새 취약점이 들어오면 바로 대조합니다.</p>
+<div class="page-head">
+  <div>
+    <h1>프로젝트</h1>
+    <p class="muted">등록한 저장소를 매일 스캔하고, 새 취약점이 들어오면 바로 대조합니다.</p>
+  </div>
+</div>
 
-<section class="card">
-  {% if projects %}
-    <table class="table">
-      <thead><tr><th>이름</th><th>컴포넌트</th><th>미처리 후보</th><th>마지막 스캔</th></tr></thead>
-      <tbody>
-      {% for p in projects %}
-        <tr>
-          <td><a href="/projects/{{ p.id }}">{{ p.name }}</a>
-            <div class="muted small">{{ p.repo_url }}</div></td>
-          <td>{{ component_counts.get(p.id, 0) }}</td>
-          <td>{{ finding_counts.get(p.id, 0) }}</td>
-          <td>
-            {% if p.last_scan_error and not p.last_scanned_at %}<span class="badge badge-invalid">실패</span>
-            {% elif p.last_scanned_at %}{{ p.last_scanned_at.strftime("%Y-%m-%d %H:%M UTC") }}
-            {% else %}<span class="muted">대기 중</span>{% endif %}
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p class="muted">등록된 저장소가 없습니다.</p>
-  {% endif %}
-</section>
+{% if projects %}
+<div class="tiles">
+  <div class="tile"><div class="tile-label"><span class="icon" aria-hidden="true">folder_open</span>저장소</div>
+    <div class="tile-value">{{ projects | length }}</div></div>
+  <div class="tile"><div class="tile-label"><span class="icon" aria-hidden="true">deployed_code</span>컴포넌트</div>
+    <div class="tile-value">{{ component_counts.values() | sum }}</div></div>
+  <div class="tile"><div class="tile-label"><span class="icon" aria-hidden="true">pending_actions</span>미처리 후보</div>
+    <div class="tile-value">{{ finding_counts.values() | sum }}</div></div>
+  <div class="tile"><div class="tile-label"><span class="icon" aria-hidden="true">error</span>스캔 실패</div>
+    <div class="tile-value">{{ projects | selectattr("last_scan_error") | list | length }}</div></div>
+</div>
+{% endif %}
 
-<section class="card">
-  <h2>저장소 등록</h2>
-  <p class="muted">비공개 저장소는 <a href="/settings/keys">API 키</a>에서 GitHub 토큰을 먼저 등록하세요.</p>
-  <form method="post" action="/projects" class="stack">
-    <label for="name">이름</label>
-    <input id="name" name="name" required maxlength="200" value="{{ form.name or '' }}">
-    <label for="repo_url">저장소 주소 (https)</label>
-    <input id="repo_url" name="repo_url" type="url" required placeholder="https://github.com/owner/repo"
-           value="{{ form.repo_url or '' }}">
-    <label for="default_branch">브랜치 (비우면 기본 브랜치)</label>
-    <input id="default_branch" name="default_branch" maxlength="200" value="{{ form.branch or '' }}">
-    <label for="exposure">노출 범위</label>
-    <select id="exposure" name="exposure">
-      {% for value, label in exposures.items() %}
-        <option value="{{ value }}" {{ "selected" if (form.exposure or "internet") == value }}>{{ label }}</option>
-      {% endfor %}
-    </select>
-    <div><button type="submit">등록하고 스캔</button></div>
-  </form>
-</section>
+<div class="layout layout-aside">
+  <section class="card card-flush">
+    <div class="card-head"><h2>저장소 <span class="tag">{{ projects | length }}</span></h2></div>
+    {% if projects %}
+      <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>이름</th><th class="num">컴포넌트</th><th class="num">미처리 후보</th><th>마지막 스캔</th></tr></thead>
+        <tbody>
+        {% for p in projects %}
+          <tr>
+            <td><a href="/projects/{{ p.id }}" class="row-title">{{ p.name }}</a>
+              <div class="muted small">{{ p.repo_url }}</div></td>
+            <td class="num">{{ component_counts.get(p.id, 0) }}</td>
+            <td class="num">{{ finding_counts.get(p.id, 0) }}</td>
+            <td>
+              {% if p.last_scan_error and not p.last_scanned_at %}<span class="badge badge-invalid">실패</span>
+              {% elif p.last_scanned_at %}<time class="small">{{ p.last_scanned_at.strftime("%Y-%m-%d %H:%M UTC") }}</time>
+              {% else %}<span class="muted">대기 중</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <p class="muted empty">등록된 저장소가 없습니다.</p>
+    {% endif %}
+  </section>
+
+  <section class="card sticky">
+    <h2>저장소 등록</h2>
+    <p class="muted small">비공개 저장소는 <a href="/settings/keys">API 키</a>에서 GitHub 토큰을 먼저 등록하세요.</p>
+    <form method="post" action="/projects" class="stack">
+      <label for="name">이름</label>
+      <input id="name" name="name" required maxlength="200" value="{{ form.name or '' }}">
+      <label for="repo_url">저장소 주소 (https)</label>
+      <input id="repo_url" name="repo_url" type="url" required placeholder="https://github.com/owner/repo"
+             value="{{ form.repo_url or '' }}">
+      <label for="default_branch">브랜치 (비우면 기본 브랜치)</label>
+      <input id="default_branch" name="default_branch" maxlength="200" value="{{ form.branch or '' }}">
+      <label for="exposure">노출 범위</label>
+      <select id="exposure" name="exposure">
+        {% for value, label in exposures.items() %}
+          <option value="{{ value }}" {{ "selected" if (form.exposure or "internet") == value }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <div><button type="submit"><span class="icon" aria-hidden="true">add</span>등록하고 스캔</button></div>
+    </form>
+  </section>
+</div>
 {% endblock %}

@@ -4,20 +4,24 @@
 {% macro pct(v) %}{{ "-" if v is none else "%.1f%%" | format(v * 100) }}{% endmacro %}
 
 {% block content %}
-<h1>평가</h1>
-<p class="muted">MVP 성공 지표와, 사용자가 처리한 Finding을 정답으로 삼은 정확도입니다.
-  직접 만든 정답 셋으로 평가하거나 비교 실험을 하려면 CLI(<code>python -m autocve.cli eval</code>)를 쓰세요.</p>
+<div class="page-head">
+  <div>
+    <h1>평가</h1>
+    <p class="muted">MVP 성공 지표와, 사용자가 처리한 Finding을 정답으로 삼은 정확도입니다.
+      직접 만든 정답 셋으로 평가하거나 비교 실험을 하려면 CLI(<code>python -m autocve.cli eval</code>)를 쓰세요.</p>
+  </div>
+</div>
 
 <section class="card">
   <h2>성공 지표</h2>
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>지표</th><th>값</th><th>목표</th><th>결과</th></tr></thead>
+    <thead><tr><th>지표</th><th class="num">값</th><th>목표</th><th>결과</th></tr></thead>
     <tbody>
     {% for m, value in metrics %}
       <tr>
         <td>{{ m.label }}<div class="muted small">{{ m.detail }}</div></td>
-        <td>{{ value }}</td>
+        <td class="num">{{ value }}</td>
         <td class="small">{{ m.target }}</td>
         <td>{% if m.passed is true %}<span class="badge badge-valid">달성</span>{% elif m.passed is false %}<span class="badge badge-invalid">미달</span>{% else %}<span class="muted">-</span>{% endif %}</td>
       </tr>
@@ -27,6 +31,7 @@
   </div>
 </section>
 
+<div class="layout layout-split">
 <section class="card">
   <h2>정확도 <span class="tag">정답 {{ accuracy.cases }}건</span></h2>
   {% if not accuracy.cases %}
@@ -39,10 +44,10 @@
       <div class="tile"><div class="tile-label">정밀도 / 재현율</div><div class="tile-value">{{ pct(accuracy.precision) }} / {{ pct(accuracy.recall) }}</div></div>
     </div>
     <table class="table">
-      <thead><tr><th></th><th>시스템: 영향 있음</th><th>시스템: 영향 없음</th></tr></thead>
+      <thead><tr><th></th><th class="num">시스템: 영향 있음</th><th class="num">시스템: 영향 없음</th></tr></thead>
       <tbody>
-        <tr><th>정답: 영향 있음</th><td>{{ accuracy.true_positive }}</td><td>{{ accuracy.false_negative }}</td></tr>
-        <tr><th>정답: 영향 없음</th><td>{{ accuracy.false_positive }}</td><td>{{ accuracy.true_negative }}</td></tr>
+        <tr><th>정답: 영향 있음</th><td class="num">{{ accuracy.true_positive }}</td><td class="num">{{ accuracy.false_negative }}</td></tr>
+        <tr><th>정답: 영향 없음</th><td class="num">{{ accuracy.false_positive }}</td><td class="num">{{ accuracy.true_negative }}</td></tr>
       </tbody>
     </table>
     <p class="small muted">보류 {{ accuracy.uncertain }}건 · 분석 전 {{ accuracy.pending }}건
@@ -58,13 +63,14 @@
     적용하려면 <code>python -m autocve.cli eval calibrate --apply</code>를 실행하세요.</p>
   {% if calibration.samples %}
     <table class="table small">
-      <thead><tr><th>임계값</th><th>자동 종결</th><th>그중 실제 영향 있음</th><th>오판율</th></tr></thead>
+      <thead><tr><th class="num">임계값</th><th class="num">자동 종결</th><th class="num">그중 실제 영향 있음</th><th class="num">오판율</th></tr></thead>
       <tbody>
       {% for p in calibration.points[::2] %}
-        <tr><td>{{ "%.2f" | format(p.threshold) }}</td><td>{{ p.closed }}</td><td>{{ p.errors }}</td><td>{{ pct(p.error_rate) }}</td></tr>
+        <tr><td class="num">{{ "%.2f" | format(p.threshold) }}</td><td class="num">{{ p.closed }}</td><td class="num">{{ p.errors }}</td><td class="num">{{ pct(p.error_rate) }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
   {% endif %}
 </section>
+</div>
 {% endblock %}

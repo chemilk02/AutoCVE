@@ -53,41 +53,21 @@
 {% endmacro %}
 
 {% block content %}
-<h1>API 키</h1>
-<p class="muted">키는 암호화해서 저장하며, 저장 후에는 끝 4자리만 표시합니다.
-  .env에 넣은 값은 시작할 때 반영되고, 이 화면에서는 바꿀 수 없습니다.</p>
+<div class="page-head">
+  <div>
+    <h1>API 키</h1>
+    <p class="muted">키는 암호화해서 저장하며, 저장 후에는 끝 4자리만 표시합니다.
+      .env에 넣은 값은 시작할 때 반영되고, 이 화면에서는 바꿀 수 없습니다.</p>
+  </div>
+</div>
 
+<div class="layout layout-split">
+<div class="col">
 <section class="card">
   <h2>Anthropic <span class="tag">필수</span></h2>
   <p class="muted">취약점 프로파일 추출과 Haiku/Sonnet/Opus 분석에 사용합니다.</p>
   {{ credential_status(credentials["anthropic"]) }}
   {{ key_form("anthropic", "sk-ant-...") }}
-</section>
-
-<section class="card">
-  <h2>JEV 판별 모델 <span class="tag">선택</span></h2>
-  <p class="muted">위험 여부 판별과 분석 모델 선택에 사용합니다. 키가 없으면 규칙 기반 판별로 동작합니다.</p>
-
-  {% if locks.jev_provider %}{{ env_note("AUTOCVE_JEV_PROVIDER") }}{% endif %}
-  <form method="post" action="/settings/jev-provider" class="row provider-select">
-    <label for="jev-provider">사용할 제공자</label>
-    <select id="jev-provider" name="provider" {{ "disabled" if locks.jev_provider }}>
-      <option value="none" {{ "selected" if workspace.jev_provider == "none" }}>사용 안 함 (규칙 기반)</option>
-      {% for p in jev_providers %}
-        <option value="{{ p }}" {{ "selected" if workspace.jev_provider == p }}
-                {{ "disabled" if not credentials[p] }}>{{ labels[p] }}{{ "" if credentials[p] else " - 키 없음" }}</option>
-      {% endfor %}
-    </select>
-    {% if not locks.jev_provider %}<button type="submit" class="secondary">변경</button>{% endif %}
-  </form>
-
-  {% for p in jev_providers %}
-    <div class="subcard {{ 'active' if workspace.jev_provider == p }}">
-      <h3>{{ labels[p] }}{% if workspace.jev_provider == p %} <span class="tag">사용 중</span>{% endif %}</h3>
-      {{ credential_status(credentials[p]) }}
-      {{ key_form(p, "sk-or-..." if p == "openrouter" else "TypeSafe API 키") }}
-    </div>
-  {% endfor %}
 </section>
 
 <section class="card">
@@ -113,4 +93,34 @@
   {{ credential_status(credentials["github"]) }}
   {{ key_form("github", "github_pat_...") }}
 </section>
+</div>
+
+<div class="col">
+<section class="card">
+  <h2>JEV 판별 모델 <span class="tag">선택</span></h2>
+  <p class="muted">위험 여부 판별과 분석 모델 선택에 사용합니다. 키가 없으면 규칙 기반 판별로 동작합니다.</p>
+
+  {% if locks.jev_provider %}{{ env_note("AUTOCVE_JEV_PROVIDER") }}{% endif %}
+  <form method="post" action="/settings/jev-provider" class="row provider-select">
+    <label for="jev-provider">사용할 제공자</label>
+    <select id="jev-provider" name="provider" {{ "disabled" if locks.jev_provider }}>
+      <option value="none" {{ "selected" if workspace.jev_provider == "none" }}>사용 안 함 (규칙 기반)</option>
+      {% for p in jev_providers %}
+        <option value="{{ p }}" {{ "selected" if workspace.jev_provider == p }}
+                {{ "disabled" if not credentials[p] }}>{{ labels[p] }}{{ "" if credentials[p] else " - 키 없음" }}</option>
+      {% endfor %}
+    </select>
+    {% if not locks.jev_provider %}<button type="submit" class="secondary">변경</button>{% endif %}
+  </form>
+
+  {% for p in jev_providers %}
+    <div class="subcard {{ 'active' if workspace.jev_provider == p }}">
+      <h3>{{ labels[p] }}{% if workspace.jev_provider == p %} <span class="tag">사용 중</span>{% endif %}</h3>
+      {{ credential_status(credentials[p]) }}
+      {{ key_form(p, "sk-or-..." if p == "openrouter" else "TypeSafe API 키") }}
+    </div>
+  {% endfor %}
+</section>
+</div>
+</div>
 {% endblock %}

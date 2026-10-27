@@ -2,10 +2,15 @@
 {% block title %}알림 · AutoCVE{% endblock %}
 
 {% block content %}
-<h1>알림</h1>
-<p class="muted">위험 등급이 기준 이상이면 바로 알리고, 그 아래(Medium, Low)는 하루 한 번 모아서 보냅니다.
-  영향 없음으로 판정되었거나 직접 닫은 취약점은 알리지 않습니다.</p>
+<div class="page-head">
+  <div>
+    <h1>알림</h1>
+    <p class="muted">위험 등급이 기준 이상이면 바로 알리고, 그 아래(Medium, Low)는 하루 한 번 모아서 보냅니다.
+      영향 없음으로 판정되었거나 직접 닫은 취약점은 알리지 않습니다.</p>
+  </div>
+</div>
 
+<div class="layout layout-split">
 <form method="post" action="/settings/notifications" class="card stack">
   <h2>알림 기준</h2>
   <label for="immediate_grade">즉시 알림</label>
@@ -39,6 +44,7 @@
 </form>
 
 <section class="card">
+  <h2>전송</h2>
   <div class="row actions">
     <form method="post" action="/settings/notifications/test"><button type="submit" class="secondary">테스트 알림 보내기</button></form>
     {% if slack and "slack" not in locks.providers %}
@@ -50,14 +56,15 @@
   {% if logs %}
     <h3>최근 전송</h3>
     <table class="table small">
-      <thead><tr><th>시각</th><th>채널</th><th>종류</th><th>건수</th><th>결과</th></tr></thead>
+      <thead><tr><th>시각</th><th>채널</th><th>종류</th><th class="num">건수</th><th>결과</th></tr></thead>
       <tbody>
       {% for log in logs %}
-        <tr><td>{{ log.created_at.strftime("%m-%d %H:%M") }}</td><td>{{ log.channel }}</td><td>{{ log.kind }}</td>
-          <td>{{ log.finding_ids | length }}</td><td>{% if log.ok %}성공{% else %}<span class="text-error">{{ log.error }}</span>{% endif %}</td></tr>
+        <tr><td class="num">{{ log.created_at.strftime("%m-%d %H:%M") }}</td><td>{{ log.channel }}</td><td>{{ log.kind }}</td>
+          <td class="num">{{ log.finding_ids | length }}</td><td>{% if log.ok %}성공{% else %}<span class="text-error">{{ log.error }}</span>{% endif %}</td></tr>
       {% endfor %}
       </tbody>
     </table>
   {% endif %}
 </section>
+</div>
 {% endblock %}
