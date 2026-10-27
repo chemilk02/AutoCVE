@@ -11,6 +11,7 @@ import argparse
 import json
 import logging
 import sys
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -19,6 +20,8 @@ from autocve.config import get_settings
 from autocve.credentials.service import get_or_create_default_workspace
 from autocve.db import make_engine, make_session_factory
 from autocve.ecosystems import SUPPORTED
+from autocve.evaluation import calibrate, dataset, experiment, metrics, report
+from autocve.evaluation.experiment import STRATEGIES
 from autocve.inventory.repo import RepoError, validate_repo_url
 from autocve.matcher.matcher import match_components
 from autocve.models import Advisory, Component, Finding, Project
@@ -47,6 +50,18 @@ def main(argv: list[str] | None = None) -> int:
     triage = sub.add_parser("triage", help="판별·분석 대기 Finding 처리 (저장소를 다시 clone)")
     triage.add_argument("project_id", type=int)
     sub.add_parser("rematch", help="모든 컴포넌트를 취약점 DB와 다시 대조")
+    evaluation = sub.add_parser("eval", help="평가: 지표, 정답 셋, 임계값 보정, 비교 실험")
+    eval_sub = evaluation.add_subparsers(dest="eval_command", required=True)
+    report = eval_sub.add_parser("report", help="성공 지표와 정확도 리포트 (Markdown)")
+    report.add_argument("--dataset", type=Path, help="정답 셋 JSON (없으면 사용자 처리 기록)")
+    eval_sub.add_parser("export-feedback", help="사용자 처리 기록을 정답 셋 JSON으로 내보내기")
+    calibrate = eval_sub.add_parser("calibrate", help="자동 종결 임계값 보정")
+    calibrate.add_argument("--dataset", type=Path)
+    calibrate.add_argument("--apply", action="store_true", help="권장값을 워크스페이스에 저장")
+    experiment = eval_sub.add_parser("experiment", help="현재 파이프라인과 Opus 단일 비교")
+    experiment.add_argument("--dataset", type=Path)
+    experiment.add_argument("--strategy", choices=STRATEGIES, action="append")
+    experiment.add_argument("--yes", action="store_true", help="비용이 드는 전략을 실행")
     findings = sub.add_parser("findings", help="후보 Finding 목록")
     findings.add_argument("project_id", type=int)
     args = parser.parse_args(argv)
@@ -115,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "notify":
             vault = KeyVault.from_b64(settings.master_key.get_secret_value())
             print(json.dumps(pipeline.notify_all(session, vault, settings, digest=args.digest)))
+        elif args.command == "eval":
+            return run_eval(args, session, settings)
         elif args.command == "rematch":
             result = match_components(session, session.scalars(select(Component)).all())
             print(json.dumps({"created": len(result.created), "resolved": len(result.resolved)}))
@@ -132,6 +149,61 @@ def main(argv: list[str] | None = None) -> int:
                     f" [{component.scope}{', direct' if component.direct else ''}]"
                     f" {advisory.summary or ''}"
                 )
+    return 0
+
+
+def _cases(args, session, workspace) -> list:
+    if getattr(args, "dataset", None):
+        return dataset.load(args.dataset)
+    return dataset.from_feedback(session, workspace)
+
+
+def run_eval(args, session, settings) -> int:
+    workspace = get_or_create_default_workspace(session)
+    command = args.eval_command
+    try:
+        cases = [] if command == "export-feedback" else _cases(args, session, workspace)
+    except dataset.DatasetError as e:
+        print(e, file=sys.stderr)
+        return 2
+    if command == "export-feedback":
+        print(dataset.dump(dataset.from_feedback(session, workspace)))
+    elif command == "report":
+        print("## 성공 지표\n")
+        print(report.metrics_table(metrics.success_metrics(session, workspace)))
+        print()
+        print(
+            report.accuracy_section("정답 셋 대비 정확도", metrics.current_accuracy(session, cases))
+        )
+        print()
+        print(report.calibration_section(calibrate.calibrate(calibrate.samples(session, cases))))
+    elif command == "calibrate":
+        result = calibrate.calibrate(calibrate.samples(session, cases))
+        print(report.calibration_section(result))
+        if args.apply:
+            if result.recommended is None:
+                print("\n권장값이 없어 저장하지 않았습니다.", file=sys.stderr)
+                return 1
+            calibrate.apply(session, workspace, result.recommended)
+            print(f"\n자동 종결 임계값을 {result.recommended}로 저장했습니다.")
+    elif command == "experiment":
+        strategies = args.strategy or ["current"]
+        if "opus_low" in strategies and not args.yes:
+            count, cost = experiment.estimate_cost(session, cases)
+            print(
+                f"opus_low는 Finding {count}건을 Opus로 다시 분석합니다 "
+                f"(추정 상한 ${cost:.2f}). 실행하려면 --yes를 붙이세요.",
+                file=sys.stderr,
+            )
+            return 1
+        results = []
+        for strategy in strategies:
+            if strategy == "current":
+                results.append(experiment.run_current(session, cases))
+            else:
+                vault = KeyVault.from_b64(settings.master_key.get_secret_value())
+                results.append(experiment.run_opus_low(session, cases, workspace, vault, settings))
+        print(report.experiment_section(results))
     return 0
 
 

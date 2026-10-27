@@ -75,7 +75,7 @@ def analysis_key(triage: TriageResult, tier: str) -> str | None:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def _latest_triage(session: Session, finding_id: int) -> TriageResult | None:
+def latest_triage(session: Session, finding_id: int) -> TriageResult | None:
     return session.scalar(
         select(TriageResult)
         .where(TriageResult.finding_id == finding_id)
@@ -83,7 +83,7 @@ def _latest_triage(session: Session, finding_id: int) -> TriageResult | None:
     )
 
 
-def _profile(session: Session, workspace: Workspace, advisory_id: str) -> dict:
+def advisory_profile(session: Session, workspace: Workspace, advisory_id: str) -> dict:
     row = session.scalar(
         select(AdvisoryProfile).where(
             AdvisoryProfile.workspace_id == workspace.id,
@@ -237,7 +237,7 @@ def analyze_findings(
 
     work = []
     for finding, component, advisory in rows:
-        triage = _latest_triage(session, finding.id)
+        triage = latest_triage(session, finding.id)
         if triage is None or not triage.route:
             continue
         if triage.action not in (Action.ANALYZE, Action.AUTO_CLOSE):
@@ -246,7 +246,7 @@ def analyze_findings(
             advisory=advisory,
             component=component,
             project=project,
-            profile=_profile(session, workspace, advisory.id),
+            profile=advisory_profile(session, workspace, advisory.id),
             evidence=triage.evidence or {},
         )
         work.append((finding, triage, context))
@@ -323,7 +323,7 @@ def collect_batches(session: Session, workspace: Workspace, vault: KeyVault, gat
     needs_deep: set[int] = set()
 
     def apply(finding: Finding, outcome: AnalysisOutcome, cache_key: str) -> None:
-        triage = _latest_triage(session, finding.id)
+        triage = latest_triage(session, finding.id)
         if outcome.verdict == "uncertain" or outcome.verdict == "refused":
             session.add(
                 Analysis(
