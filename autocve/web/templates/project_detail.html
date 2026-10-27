@@ -15,6 +15,8 @@
     {% if project.last_scan_error %}
       <dt>문제</dt><dd class="text-error">{{ project.last_scan_error }}</dd>
     {% endif %}
+    <dt>미처리 위험</dt>
+    <dd>{% for label, key, n in summary.grades %}<span class="grade grade-{{ key }}">{{ label }} {{ n }}</span>{% endfor %}</dd>
     <dt>컴포넌트</dt>
     <dd>{{ summary.total }}개
       {% if summary.total %}
@@ -44,14 +46,16 @@
 
 <section class="card">
   <h2>후보 취약점 <span class="tag">{{ findings | length }}</span></h2>
-  <p class="muted">버전이 영향 범위에 드는 후보와 판별 결과입니다. Claude 분석은 다음 단계에서 이뤄집니다.</p>
+  <p class="muted">버전이 영향 범위에 드는 후보를 위험도 순으로 보여줍니다. 판별·분석이 끝나면 등급이 갱신됩니다.</p>
   {% if findings %}
     <div class="table-wrap">
     <table class="table">
-      <thead><tr><th>취약점</th><th>패키지</th><th>신호</th><th>판별</th></tr></thead>
+      <thead><tr><th>위험</th><th>취약점</th><th>패키지</th><th>신호</th><th>판별·분석</th></tr></thead>
       <tbody>
       {% for f in findings %}
         <tr class="{{ 'closed' if f.finding.status not in open_statuses or (f.triage and f.triage.closed) else '' }}">
+          <td>{% if f.grade_label %}<span class="grade grade-{{ f.finding.grade }}">{{ f.grade_label }}</span>
+            <div class="muted small">{{ "%.0f" | format(f.finding.risk_score) }}</div>{% endif %}</td>
           <td><a href="https://osv.dev/vulnerability/{{ f.advisory.id }}" rel="noopener noreferrer" target="_blank" class="id">{{ f.advisory.id }}</a>
             <div class="small">{{ f.advisory.summary or "" }}</div></td>
           <td><code>{{ f.component.name }}@{{ f.component.version }}</code>
@@ -68,6 +72,11 @@
               <div class="muted">{{ f.triage.source }}{% if f.triage.reasons %} · {{ f.triage.reasons | join(" · ") }}{% endif %}</div>
             {% else %}
               <span class="muted">{{ "판별 대기" if f.finding.status == "new" else f.finding.status }}</span>
+            {% endif %}
+            {% if f.analysis %}
+              <div class="analysis"><strong>{{ {"affected": "영향 있음", "not_affected": "영향 없음", "uncertain": "판단 보류(사람 검토)", "refused": "분석 거부", "error": "분석 실패"}.get(f.analysis.verdict, f.analysis.verdict) }}</strong>
+                <span class="muted">({{ f.analysis.model }})</span>
+                {% if f.analysis.rationale %}<div>{{ f.analysis.rationale }}</div>{% endif %}</div>
             {% endif %}
           </td>
         </tr>

@@ -45,7 +45,7 @@ class BudgetStatus:
     def ratio(self) -> float:
         if not self.limit_usd:
             return 0.0
-        return float(self.used_usd / self.limit_usd)
+        return float(self.used_usd) / float(self.limit_usd)
 
 
 def month_start(now: datetime | None = None) -> datetime:
@@ -126,6 +126,14 @@ class LlmGateway:
     def budget(self) -> BudgetStatus:
         return budget_status(self._session, self._workspace)
 
+    @property
+    def workspace(self) -> Workspace:
+        return self._workspace
+
+    def client(self) -> anthropic.Anthropic:
+        """Batch API처럼 게이트웨이가 감싸지 않는 호출용. 사용량은 호출한 쪽이 기록한다."""
+        return self._get_client()
+
     def _get_client(self) -> anthropic.Anthropic:
         if self._client is None:
             key = load_secret(self._session, self._vault, self._workspace, Provider.ANTHROPIC)
@@ -148,7 +156,8 @@ class LlmGateway:
             self._session,
             self._workspace,
             provider="anthropic",
-            model=params["model"],
+            # 서버 측 fallback이 동작하면 다른 모델이 응답하므로, 실제 응답한 모델 단가로 기록한다.
+            model=getattr(response, "model", None) or params["model"],
             stage=stage,
             finding_id=finding_id,
             input_tokens=usage.input_tokens or 0,

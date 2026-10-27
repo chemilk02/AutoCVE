@@ -41,7 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument("--exposure", choices=EXPOSURES, default="internet")
     scan = sub.add_parser("scan", help="저장소 스캔 → 매칭 → 판별")
     scan.add_argument("project_id", type=int)
-    triage = sub.add_parser("triage", help="미판별 Finding 판별 (저장소를 다시 clone)")
+    sub.add_parser("collect-batches", help="끝난 Batch API 분석 결과 반영")
+    triage = sub.add_parser("triage", help="판별·분석 대기 Finding 처리 (저장소를 다시 clone)")
     triage.add_argument("project_id", type=int)
     sub.add_parser("rematch", help="모든 컴포넌트를 취약점 DB와 다시 대조")
     findings = sub.add_parser("findings", help="후보 Finding 목록")
@@ -106,6 +107,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(e, file=sys.stderr)
                 return 1
             print(json.dumps(result, ensure_ascii=False))
+        elif args.command == "collect-batches":
+            vault = KeyVault.from_b64(settings.master_key.get_secret_value())
+            print(json.dumps(pipeline.collect_analysis_batches(session, vault), default=str))
         elif args.command == "rematch":
             result = match_components(session, session.scalars(select(Component)).all())
             print(json.dumps({"created": len(result.created), "resolved": len(result.resolved)}))

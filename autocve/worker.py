@@ -100,6 +100,20 @@ async def triage_project(ctx: dict, project_id: int) -> dict:
     return await asyncio.to_thread(_triage, ctx, project_id)
 
 
+def _collect_batches(ctx: dict) -> dict:
+    with ctx["session_factory"]() as session:
+        return pipeline.collect_analysis_batches(session, ctx["vault"])
+
+
+async def collect_batches(ctx: dict) -> dict:
+    results = await asyncio.to_thread(_collect_batches, ctx)
+    # Haiku 배치 결과가 불확실한 후보는 코드가 필요한 심층 분석으로 넘긴다.
+    projects = {p for r in results.values() for p in r.get("projects_to_analyze", [])}
+    for project_id in sorted(projects):
+        await ctx["redis"].enqueue_job("triage_project", project_id)
+    return results
+
+
 async def scan_all_projects(ctx: dict) -> int:
     with ctx["session_factory"]() as session:
         ids = list(session.scalars(select(Project.id)))
@@ -109,11 +123,19 @@ async def scan_all_projects(ctx: dict) -> int:
 
 
 class WorkerSettings:
-    functions = [sync_feeds, sync_exploits, scan_project, triage_project, scan_all_projects]
+    functions = [
+        sync_feeds,
+        sync_exploits,
+        scan_project,
+        triage_project,
+        collect_batches,
+        scan_all_projects,
+    ]
     cron_jobs = [
         cron(sync_feeds, minute=7, run_at_startup=True),  # 매시 7분
         cron(sync_exploits, hour=6, minute=17, run_at_startup=True),  # 매일 06:17 UTC
         cron(scan_all_projects, hour=3, minute=23),  # 매일 03:23 UTC
+        cron(collect_batches, minute={2, 12, 22, 32, 42, 52}),  # 10분마다 배치 결과 확인
     ]
     on_startup = startup
     # 최초 OSV 적재(npm 수백 MB)는 오래 걸린다.

@@ -10,7 +10,16 @@ from autocve.api.deps import AppState, get_session, get_state, templates
 from autocve.credentials import service
 from autocve.inventory.repo import RepoError, validate_repo_url
 from autocve.matcher.matcher import OPEN_STATUSES
-from autocve.models import Advisory, Component, ExploitSignal, Finding, Project, TriageResult
+from autocve.models import (
+    Advisory,
+    Analysis,
+    Component,
+    ExploitSignal,
+    Finding,
+    Project,
+    TriageResult,
+)
+from autocve.scoring.risk import GRADE_LABELS
 
 router = APIRouter()
 
@@ -165,7 +174,7 @@ def _render_detail(
         .join(Component, Component.id == Finding.component_id)
         .join(Advisory, Advisory.id == Finding.advisory_id)
         .where(Finding.project_id == project.id)
-        .order_by(Finding.status, Component.name, Advisory.id)
+        .order_by(Finding.risk_score.desc().nulls_last(), Component.name, Advisory.id)
     ).all()
     cves = {a for _, _, adv in rows for a in [adv.id, *(adv.aliases or [])] if a.startswith("CVE-")}
     signals = {
@@ -181,6 +190,14 @@ def _render_detail(
             .order_by(TriageResult.id)
         ):
             latest_triage[result.finding_id] = result
+    latest_analysis: dict[int, Analysis] = {}
+    for i in range(0, len(finding_ids), 500):
+        for analysis in session.scalars(
+            select(Analysis)
+            .where(Analysis.finding_id.in_(finding_ids[i : i + 500]))
+            .order_by(Analysis.id)
+        ):
+            latest_analysis[analysis.finding_id] = analysis
     findings = []
     for finding, component, advisory in rows:
         advisory_cves = [a for a in [advisory.id, *(advisory.aliases or [])] if a in signals]
@@ -195,9 +212,13 @@ def _render_detail(
                 "in_kev": in_kev,
                 "malicious": advisory.id.startswith("MAL-"),
                 "triage": describe_triage(latest_triage.get(finding.id)),
+                "analysis": latest_analysis.get(finding.id),
+                "grade_label": GRADE_LABELS.get(finding.grade or "", None),
             }
         )
+    grades = Counter(f["finding"].grade for f in findings if f["finding"].status in OPEN_STATUSES)
     summary = {
+        "grades": [(GRADE_LABELS[g], g, grades.get(g, 0)) for g in GRADE_LABELS],
         "total": len(components),
         "by_ecosystem": Counter(c.ecosystem for c in components),
         "direct": sum(c.direct for c in components),
