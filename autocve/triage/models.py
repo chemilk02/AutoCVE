@@ -55,12 +55,12 @@ QUESTIONS = {
     EXPOSURE: {
         "type": "choice",
         "instructions": "Decide whether this codebase is affected by the vulnerability.",
-        "options": EXPOSURE_OPTIONS,
+        "criteria": EXPOSURE_OPTIONS,
     },
     ROUTE: {
         "type": "choice",
         "instructions": "Choose the cheapest analysis that can settle the question reliably.",
-        "options": ROUTE_OPTIONS,
+        "criteria": ROUTE_OPTIONS,
     },
 }
 

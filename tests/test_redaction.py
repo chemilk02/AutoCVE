@@ -1,3 +1,4 @@
+import io
 import logging
 
 from autocve.security.redaction import MASK, RedactingFilter, redact, register_secret
@@ -38,3 +39,41 @@ def test_log_filter_redacts_message_args_and_exception(caplog):
     assert "sk-or-v1-argumentkey123" not in output
     assert "sk-ant-api03-exceptionkey" not in output
     assert MASK in output
+
+
+def test_log_filter_keeps_args_for_uvicorn_access_formatter(capsys):
+    from uvicorn.logging import AccessFormatter
+
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(
+        AccessFormatter('%(client_addr)s - "%(request_line)s" %(status_code)s', use_colors=False)
+    )
+    handler.addFilter(RedactingFilter())
+    logger = logging.getLogger("test.redaction.access")
+    logger.addHandler(handler)
+    logger.propagate = False
+    access = '%s - "%s %s HTTP/%s" %d'
+    try:
+        logger.warning(access, "127.0.0.1:5000", "GET", "/healthz", "1.1", 200)
+        logger.warning(access, "127.0.0.1:5000", "GET", "/x?k=sk-or-v1-querykey123", "1.1", 401)
+    finally:
+        logger.removeHandler(handler)
+
+    lines = stream.getvalue().splitlines()
+    assert lines == [
+        '127.0.0.1:5000 - "GET /healthz HTTP/1.1" 200 OK',
+        f'127.0.0.1:5000 - "GET /x?k={MASK} HTTP/1.1" 401 Unauthorized',
+    ]
+    assert "Logging error" not in capsys.readouterr().err
+
+
+def test_log_filter_falls_back_when_args_cannot_be_kept(caplog):
+    logger = logging.getLogger("test.redaction.fallback")
+    caplog.handler.addFilter(RedactingFilter())
+    logger.warning("payload %r", {"x-api-key": "zzzzzzzzzzzz"})
+    logger.warning("dict style %(key)s", {"key": "sk-ant-api03-mappingkey"})
+
+    assert "zzzzzzzzzzzz" not in caplog.text
+    assert "sk-ant-api03-mappingkey" not in caplog.text
+    assert caplog.text.count(MASK) == 2

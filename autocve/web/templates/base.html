@@ -7,10 +7,25 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  {% set path = request.url.path %}
   <header class="topbar">
-    <a class="brand" href="/">AutoCVE</a>
-    <nav><a href="/projects">프로젝트</a><a href="/usage">사용량</a><a href="/evaluation">평가</a><a href="/settings/notifications">알림</a><a href="/settings/keys">API 키</a></nav>
+    <a class="brand" href="/">
+      <svg viewBox="0 0 252.6 252.59" aria-hidden="true"><path d="M126.3,72.59l18.66-37.32c.84-1.69.84-3.68,0-5.36l-13.3-26.59c-2.21-4.42-8.52-4.42-10.73,0L.64,243.91c-1.99,3.99.91,8.68,5.36,8.68h26.59c2.27,0,4.35-1.28,5.36-3.31L126.3,72.59Z"/><path d="M152.44,66.31l-13.3,26.59c-.84,1.69-.84,3.68,0,5.36l75.5,151c1.02,2.03,3.09,3.31,5.36,3.31h26.59c4.46,0,7.36-4.69,5.36-8.68l-88.8-177.59c-2.21-4.42-8.52-4.42-10.73,0Z"/><polygon points="126.3 132.59 133.3 165.59 191.3 172.59 133.3 179.59 126.3 212.59 119.3 179.59 61.3 172.59 119.3 165.59 126.3 132.59"/></svg>
+      AutoCVE <span class="brand-sub">by ASTRANTIS</span>
+    </a>
   </header>
+  <nav class="sidebar" aria-label="주 메뉴">
+    <div class="section-label">모니터링</div>
+    {% for href, icon, label in [("/projects", "folder_open", "프로젝트"), ("/usage", "monitoring", "사용량"), ("/evaluation", "fact_check", "평가")] %}
+      <a class="menu-item{{ ' active' if path.startswith(href) or (href == '/projects' and (path == '/' or path.startswith('/findings'))) }}" href="{{ href }}"
+         {{ 'aria-current="page"' | safe if path == href }}><span class="icon" aria-hidden="true">{{ icon }}</span><span>{{ label }}</span></a>
+    {% endfor %}
+    <div class="section-label">설정</div>
+    {% for href, icon, label in [("/settings/notifications", "notifications", "알림"), ("/settings/keys", "key", "API 키")] %}
+      <a class="menu-item{{ ' active' if path.startswith(href) }}" href="{{ href }}"
+         {{ 'aria-current="page"' | safe if path == href }}><span class="icon" aria-hidden="true">{{ icon }}</span><span>{{ label }}</span></a>
+    {% endfor %}
+  </nav>
   <main>
     {% if notice %}
       <div class="notice notice-{{ notice[0] }}" role="status">{{ notice[1] }}</div>

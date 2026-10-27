@@ -1,3 +1,5 @@
+import re
+
 from sqlalchemy import select
 
 from autocve.collector.osv import upsert_advisory
@@ -165,6 +167,6 @@ def test_detail_shows_grade_and_analysis(client, session_factory):
         session.commit()
         project_id = finding.project_id
     page = client.get(f"/projects/{project_id}").text
-    assert "Critical 1" in page
+    assert re.search(r'Critical</div>\s*<div class="tile-value">1<', page)
     assert "영향 있음" in page and "claude-sonnet-5-5" in page
     assert "render.js에서 사용자 입력이" in page

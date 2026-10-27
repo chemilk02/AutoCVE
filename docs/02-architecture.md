@@ -205,7 +205,7 @@ JEV 출력을 그대로 따르지 않고, 확률 임계값과 안전 규칙으�
 
 공통 사항은 다음과 같다.
 
-- 요청 본문: `model`, `state`, `questions{이름: {type, instructions, options/criteria}}`
+- 요청 본문: `model`, `state`, `questions{이름: {type, instructions, criteria}}` (`options`로 보내면 400. OpenRouter에서 확인)
 - 응답: 질문별 `choice`, `confidence`, `probabilities`
 - `/api/v1/chat/completions`로 보내면 안 된다. JEV는 판별 전용 엔드포인트를 쓴다.
 - 운영에서는 `latest` 별칭 대신 **버전을 고정**한다. 임계값 보정이 모델 버전에 묶이기 때문이다. 두 제공자의 버전 표기가 다르므로 `model_version`은 응답에서 읽어 저장한다.

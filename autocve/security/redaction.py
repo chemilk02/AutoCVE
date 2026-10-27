@@ -8,6 +8,7 @@
 import logging
 import re
 import threading
+from collections.abc import Mapping
 
 MASK = "[REDACTED]"
 
@@ -42,10 +43,41 @@ def redact(text: str) -> str:
     return text
 
 
+def _redact_value(value: object) -> object:
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return redact(value if isinstance(value, str) else str(value))
+
+
+def _redact_args(record: logging.LogRecord) -> bool:
+    """args 구조를 유지한 채 값만 가린다. 결과에 키가 남거나 포맷이 깨지면 False."""
+    if not record.args:
+        return False
+    if isinstance(record.args, tuple):
+        args: object = tuple(_redact_value(a) for a in record.args)
+    elif isinstance(record.args, Mapping):
+        args = {k: _redact_value(v) for k, v in record.args.items()}
+    else:
+        return False
+    msg = redact(str(record.msg))
+    try:
+        message = msg % args
+    except (TypeError, ValueError, KeyError):
+        return False
+    if redact(message) != message:
+        return False
+    record.msg, record.args = msg, args
+    return True
+
+
 class RedactingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact(record.getMessage())
-        record.args = None
+        message = record.getMessage()
+        redacted = redact(message)
+        # uvicorn 액세스 로그처럼 포매터가 record.args를 직접 쓰는 경우가 있으므로,
+        # 가릴 것이 없으면 그대로 두고, 있으면 가능한 한 args 구조를 남긴다.
+        if redacted != message and not _redact_args(record):
+            record.msg, record.args = redacted, None
         if record.exc_info:
             # 예외 메시지에도 키가 섞일 수 있으므로 미리 포맷해서 가린다.
             record.exc_text = redact(logging.Formatter().formatException(record.exc_info))

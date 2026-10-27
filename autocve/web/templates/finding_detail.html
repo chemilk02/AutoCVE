@@ -2,40 +2,16 @@
 {% block title %}{{ advisory.id }} · {{ component.name }} · AutoCVE{% endblock %}
 
 {% block content %}
-<p class="muted small"><a href="/projects">프로젝트</a> / <a href="/projects/{{ project.id }}">{{ project.name }}</a> /</p>
-<h1 class="id-heading">{{ advisory.id }}</h1>
-<p>{{ advisory.summary or "" }}</p>
-
-<section class="card">
-  <div class="row">
-    {% if grade_label %}<span class="grade grade-{{ finding.grade }}">{{ grade_label }} {{ "%.0f" | format(finding.risk_score or 0) }}</span>{% endif %}
-    <strong>{{ verdict_labels.get(finding.verdict, finding.verdict) }}</strong>
-    <span class="muted">· {{ status_labels.get(finding.status, finding.status) }}</span>
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/projects">프로젝트</a> / <a href="/projects/{{ project.id }}">{{ project.name }}</a> /</p>
+    <h1 class="id-heading">{{ advisory.id }}</h1>
+    <p>{{ advisory.summary or "" }}</p>
   </div>
-  <dl class="status">
-    <dt>패키지</dt><dd><code>{{ component.name }}@{{ component.version }}</code>
-      <span class="muted small">{{ "직접" if component.direct else "간접" }} · {{ component.scope }} · {{ component.manifest_path }}</span></dd>
-    <dt>설치 위치</dt><dd class="small"><code>{{ component.locator }}</code></dd>
-    <dt>별칭</dt><dd class="small">{{ (advisory.aliases or []) | join(", ") or "-" }}</dd>
-    <dt>원문</dt><dd class="small"><a href="https://osv.dev/vulnerability/{{ advisory.id }}" rel="noopener noreferrer" target="_blank">osv.dev에서 보기</a></dd>
-  </dl>
-</section>
+</div>
 
-{% if finding.risk_factors %}
-<section class="card">
-  <h2>위험도 구성</h2>
-  {% set f = finding.risk_factors %}
-  <p class="muted small">위험도 = 100 × 심각도 × 악용 가능성 × 도달성 × 노출도</p>
-  <table class="table">
-    <tbody>
-      <tr><th>심각도</th><td>{{ f.severity }}</td><td class="muted small">{% if f.malicious %}악성 패키지{% elif f.cvss is not none %}CVSS {{ f.cvss }}{% else %}심각도 정보 없음 (5.0으로 계산){% endif %}</td></tr>
-      <tr><th>악용 가능성</th><td>{{ f.exploit }}</td><td class="muted small">{% if f.in_kev %}CISA KEV 등재{% elif f.epss is not none %}EPSS {{ "%.1f" | format(f.epss * 100) }}%{% else %}EPSS 정보 없음{% endif %}</td></tr>
-      <tr><th>도달성</th><td>{{ f.reachability }}</td><td class="muted small">{{ verdict_labels.get(f.verdict, f.verdict) }}</td></tr>
-      <tr><th>노출도</th><td>{{ f.exposure }}</td><td class="muted small">{{ exposures.get(project.exposure, project.exposure) }}{% if component.scope == "dev" %} · dev 의존성{% endif %}</td></tr>
-    </tbody>
-  </table>
-</section>
-{% endif %}
+<div class="layout layout-detail">
+<div class="col">
 
 <section class="card">
   <h2>처리</h2>
@@ -119,4 +95,39 @@
 …(원문에서 계속){% endif %}</pre>
 </section>
 {% endif %}
+</div>
+
+<aside class="col sticky">
+<section class="card">
+  <div class="row">
+    {% if grade_label %}<span class="grade grade-{{ finding.grade }}">{{ grade_label }} {{ "%.0f" | format(finding.risk_score or 0) }}</span>{% endif %}
+    <strong>{{ verdict_labels.get(finding.verdict, finding.verdict) }}</strong>
+    <span class="muted">· {{ status_labels.get(finding.status, finding.status) }}</span>
+  </div>
+  <dl class="status">
+    <dt>패키지</dt><dd><code>{{ component.name }}@{{ component.version }}</code>
+      <span class="muted small">{{ "직접" if component.direct else "간접" }} · {{ component.scope }} · {{ component.manifest_path }}</span></dd>
+    <dt>설치 위치</dt><dd class="small"><code>{{ component.locator }}</code></dd>
+    <dt>별칭</dt><dd class="small">{{ (advisory.aliases or []) | join(", ") or "-" }}</dd>
+    <dt>원문</dt><dd class="small"><a href="https://osv.dev/vulnerability/{{ advisory.id }}" rel="noopener noreferrer" target="_blank">osv.dev에서 보기</a></dd>
+  </dl>
+</section>
+
+{% if finding.risk_factors %}
+<section class="card">
+  <h2>위험도 구성</h2>
+  {% set f = finding.risk_factors %}
+  <p class="muted small">위험도 = 100 × 심각도 × 악용 가능성 × 도달성 × 노출도</p>
+  <table class="table">
+    <tbody>
+      <tr><th>심각도</th><td>{{ f.severity }}</td><td class="muted small">{% if f.malicious %}악성 패키지{% elif f.cvss is not none %}CVSS {{ f.cvss }}{% else %}심각도 정보 없음 (5.0으로 계산){% endif %}</td></tr>
+      <tr><th>악용 가능성</th><td>{{ f.exploit }}</td><td class="muted small">{% if f.in_kev %}CISA KEV 등재{% elif f.epss is not none %}EPSS {{ "%.1f" | format(f.epss * 100) }}%{% else %}EPSS 정보 없음{% endif %}</td></tr>
+      <tr><th>도달성</th><td>{{ f.reachability }}</td><td class="muted small">{{ verdict_labels.get(f.verdict, f.verdict) }}</td></tr>
+      <tr><th>노출도</th><td>{{ f.exposure }}</td><td class="muted small">{{ exposures.get(project.exposure, project.exposure) }}{% if component.scope == "dev" %} · dev 의존성{% endif %}</td></tr>
+    </tbody>
+  </table>
+</section>
+{% endif %}
+</aside>
+</div>
 {% endblock %}
