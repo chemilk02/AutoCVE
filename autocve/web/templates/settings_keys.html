@@ -74,4 +74,12 @@
     </div>
   {% endfor %}
 </section>
+
+<section class="card">
+  <h2>GitHub <span class="tag">선택</span></h2>
+  <p class="muted">비공개 저장소를 clone할 때만 씁니다. 읽기 전용(Contents: Read) fine-grained 토큰을 권장합니다.
+    github.com 저장소에만 전송합니다.</p>
+  {{ credential_status(credentials["github"]) }}
+  {{ key_form("github", "github_pat_...") }}
+</section>
 {% endblock %}

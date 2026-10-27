@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from autocve.api.app import create_app
 from autocve.models import ApiCredential, CredentialStatus, Provider, Workspace
 from autocve.security.keyvault import generate_master_key
+from tests.fakes import FakeQueue
 
 ANTHROPIC_KEY = "sk-ant-api03-testkey-1234"
 OPENROUTER_KEY = "sk-or-v1-testkey-5678"
@@ -32,10 +33,10 @@ def test_healthz(client):
     assert client.get("/healthz").json() == {"status": "ok"}
 
 
-def test_index_redirects_to_keys(client):
+def test_index_redirects_to_projects(client):
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 303
-    assert response.headers["location"] == "/settings/keys"
+    assert response.headers["location"] == "/projects"
 
 
 def test_keys_page_renders(client):
@@ -90,7 +91,7 @@ def test_revalidate_after_master_key_change_asks_for_new_key(client, settings, v
     client.post("/settings/keys/anthropic", data={"api_key": ANTHROPIC_KEY})
 
     rotated = settings.model_copy(update={"master_key": SecretStr(generate_master_key())})
-    with TestClient(create_app(rotated, validators)) as other:
+    with TestClient(create_app(rotated, validators, FakeQueue())) as other:
         response = other.post("/settings/keys/anthropic/revalidate")
     assert response.status_code == 400
     assert "복호화할 수 없습니다" in response.text
@@ -153,7 +154,7 @@ def test_same_origin_post_allowed(client):
 
 def test_admin_password_required_when_configured(settings, validators):
     protected = settings.model_copy(update={"admin_password": SecretStr("s3cret")})
-    with TestClient(create_app(protected, validators)) as client:
+    with TestClient(create_app(protected, validators, FakeQueue())) as client:
         assert client.get("/settings/keys").status_code == 401
         assert client.get("/healthz").status_code == 200
 

@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     typesafe_base_url: str = "https://api.typesafe.ai/v1"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
+    # 취약점 피드
+    osv_base_url: str = "https://osv-vulnerabilities.storage.googleapis.com"
+    epss_url: str = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
+    kev_url: str = (
+        "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    )
+    github_api_url: str = "https://api.github.com"
+    # 저장소 clone 작업 디렉터리. 스캔이 끝나면 지운다.
+    scan_workdir: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

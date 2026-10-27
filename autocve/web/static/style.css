@@ -30,6 +30,8 @@
 
 body {
   margin: 0;
+  /* 일부 글꼴은 숫자 사이의 x를 ×로 바꾼다. 취약점 ID가 틀려 보이지 않도록 끈다. */
+  font-feature-settings: "calt" 0;
   background: var(--bg);
   color: var(--fg);
   font: 15px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
@@ -45,6 +47,8 @@ body {
 }
 
 .topbar a { color: var(--fg); text-decoration: none; }
+.topbar nav { display: flex; gap: 16px; }
+a { color: var(--accent); }
 .brand { font-weight: 700; }
 
 main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
@@ -128,3 +132,24 @@ button.danger { background: transparent; color: var(--error); border-color: var(
 .notice-success { color: var(--success); }
 .notice-warning { color: var(--warning); }
 .notice-error { color: var(--error); }
+
+.small { font-size: 13px; }
+.text-error { color: var(--error); }
+
+.stack { display: flex; flex-direction: column; gap: 4px; }
+.stack label { margin-top: 8px; }
+.stack input, .stack select { flex: none; }
+.stack button { margin-top: 12px; }
+
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.table th { color: var(--muted); font-weight: 500; font-size: 13px; white-space: nowrap; }
+.table tr.closed td { opacity: 0.55; }
+.table code { word-break: break-all; }
+.id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }

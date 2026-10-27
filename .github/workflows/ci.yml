@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: autocve
+          POSTGRES_PASSWORD: autocve
+          POSTGRES_DB: autocve
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autocve"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AUTOCVE_DATABASE_URL: postgresql+psycopg://autocve:autocve@localhost:5432/autocve
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q
+      - name: Migrations apply cleanly and match the models
+        run: |
+          alembic upgrade head
+          alembic check
+          alembic downgrade base
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t autocve:ci .
+      - name: Image has git and the app imports
+        # 워커 모듈은 import 시점에 설정을 읽으므로 테스트용 마스터 키를 넘긴다.
+        run: >-
+          docker run --rm -e AUTOCVE_MASTER_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          --entrypoint sh autocve:ci
+          -c "git --version && python -c 'import autocve.cli, autocve.worker'"

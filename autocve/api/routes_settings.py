@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from autocve.api.deps import AppState, get_session, get_state, templates
@@ -16,6 +16,7 @@ PROVIDER_LABELS = {
     Provider.ANTHROPIC: "Anthropic",
     Provider.TYPESAFE: "TypeSafe (JEV 직접)",
     Provider.OPENROUTER: "OpenRouter (JEV 경유)",
+    Provider.GITHUB: "GitHub",
 }
 NOTICE_LEVELS = {
     CredentialStatus.VALID: "success",
@@ -49,11 +50,6 @@ def _render(
 def _notice(provider: Provider, action: str, result: ValidationResult) -> tuple[str, str]:
     label = PROVIDER_LABELS[provider]
     return NOTICE_LEVELS[result.status], f"{label} 키 {action}: {result.message}"
-
-
-@router.get("/", include_in_schema=False)
-def index() -> RedirectResponse:
-    return RedirectResponse("/settings/keys", status_code=303)
 
 
 @router.get("/settings/keys", response_class=HTMLResponse)

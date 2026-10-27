@@ -3,6 +3,7 @@
 가능한 한 토큰/크레딧을 쓰지 않는 요청으로 확인한다.
 - Anthropic: GET /v1/models
 - OpenRouter: GET /api/v1/key (키 정보 조회)
+- GitHub: GET /user
 - TypeSafe: 토큰이 들지 않는 엔드포인트를 확인하지 못해 최소 판별 요청 1회를 보낸다.
   요청 형식은 공식 문서로 아직 검증하지 않았다 (docs/02-architecture.md §4.6).
 """
@@ -107,6 +108,20 @@ def validate_typesafe(
     return _http_result(response)
 
 
+def validate_github(
+    key: str, *, api_url: str, http_client: httpx.Client | None = None
+) -> ValidationResult:
+    try:
+        with _httpx_client(http_client) as client:
+            response = client.get(
+                f"{api_url}/user",
+                headers={"Authorization": f"Bearer {key}", "Accept": "application/vnd.github+json"},
+            )
+    except httpx.HTTPError:
+        return ValidationResult(CredentialStatus.UNVERIFIED, "GitHub API에 연결하지 못했습니다")
+    return _http_result(response)
+
+
 def default_validators(settings: Settings) -> dict[Provider, Validator]:
     return {
         Provider.ANTHROPIC: validate_anthropic,
@@ -116,4 +131,5 @@ def default_validators(settings: Settings) -> dict[Provider, Validator]:
         Provider.TYPESAFE: lambda key: validate_typesafe(
             key, base_url=settings.typesafe_base_url, model=settings.jev_typesafe_model
         ),
+        Provider.GITHUB: lambda key: validate_github(key, api_url=settings.github_api_url),
     }
